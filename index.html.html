@@ -182,19 +182,6 @@
   .ai-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.2);border-top-color:#000;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:6px;}
   @keyframes spin{to{transform:rotate(360deg);}}
   #cam-input{display:none;}
-
-  /* Smart Quote Builder */
-  #smart-box-wrap{margin-bottom:20px;}
-  #smart-box-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#000;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
-  #smart-input-row{display:flex;gap:8px;margin-bottom:8px;}
-  #smart-input{flex:1;margin-bottom:0;border-radius:10px;}
-  #mic-btn{width:48px;height:48px;border-radius:10px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;font-size:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
-  #mic-btn.listening{background:#000;border-color:#000;animation:pulse 1s infinite;}
-  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,0,0,0.3);}50%{box-shadow:0 0 0 8px rgba(0,0,0,0);}}
-  #smart-build-btn{width:100%;padding:12px;border-radius:10px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:1.5px;margin-bottom:8px;}
-  #smart-status{font-size:12px;color:#888;min-height:16px;margin-bottom:4px;text-align:center;}
-  #smart-result{background:#f8f8f8;border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:12px 14px;font-size:13px;color:#333;line-height:1.6;display:none;}
-  #smart-result.visible{display:block;}
   /* Notes textarea */
   .mt14{margin-top:14px;}
 </style>
@@ -277,30 +264,18 @@
           <option value="">Select address...</option>
         </select>
         <div id="postcode-status" style="font-size:12px;color:#888;margin-bottom:8px;display:none;"></div>
-        <input id="cust-address" placeholder="Site Address" style="margin-bottom:10px;">
+        <input id="cust-address" placeholder="Address" style="margin-bottom:10px;">
         <input id="cust-phone" type="tel" placeholder="Phone Number" style="margin-bottom:10px;">
         <input id="cust-email" type="email" placeholder="Email Address" style="margin-bottom:10px;">
         <label class="field-label">Quoted By</label>
         <select id="quoted-by">
           <option value="">Select name...</option>
-          <option value="Exterior Cleaning Co Operative">Exterior Cleaning Co Operative</option>
           <option value="Sam Williams">Sam Williams</option>
           <option value="Dean Blandford">Dean Blandford</option>
           <option value="Ben Pugh">Ben Pugh</option>
           <option value="Mick Lowe">Mick Lowe</option>
           <option value="Chris Shenton">Chris Shenton</option>
         </select>
-      </div>
-
-      <div id="smart-box-wrap">
-        <div id="smart-box-title">🧠 Smart Quote Builder</div>
-        <div id="smart-input-row">
-          <input id="smart-input" placeholder='e.g. "47m² of Indian stone patio and block paving driveway 30m²"' style="font-size:13px;">
-          <button id="mic-btn" onclick="toggleMic()" title="Speak your job description">🎤</button>
-        </div>
-        <button id="smart-build-btn" onclick="buildSmartQuote()">⚡ BUILD QUOTE</button>
-        <div id="smart-status"></div>
-        <div id="smart-result"></div>
       </div>
 
       <div class="section-title">🗺️ Areas to Clean</div>
@@ -795,13 +770,27 @@ function renderSummary() {
         const cat = SERVICES[area.catId];
         const sub = getSub(area.catId, area.subId);
         const st = getSubtotal(area);
-        const w = parseFloat(area.width)||0, l = parseFloat(area.length)||0;
-        const m2 = w*l;
         const panels = parseFloat(area.panels)||(sub?.avgPanels||0);
+        // Calculate total m2 from measurements array
+        const measRows = (area.measurements||[]).filter(m => parseFloat(m.w) && parseFloat(m.l));
+        const totalM2s = measRows.reduce((s,m) => s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0), 0);
         let detail = '';
-        if (area.mode==='m2') detail = `${m2.toFixed(1)} m² (${w}m × ${l}m)`;
-        else if (area.mode==='panel') detail = `${panels} panels`;
-        else detail = 'Flat rate';
+        if (area.mode==='m2') {
+          if (measRows.length === 1) {
+            const m = measRows[0];
+            detail = `${totalM2s.toFixed(1)} m² (${m.w}m × ${m.l}m)`;
+          } else if (measRows.length > 1) {
+            const rowBreakdown = measRows.map((m,ri) => `${(parseFloat(m.w)||0)*(parseFloat(m.l)||0)} m² (${m.w}m × ${m.l}m)`).join(', ');
+            detail = `${totalM2s.toFixed(1)} m² total — ${rowBreakdown}`;
+          } else {
+            detail = 'Measure required';
+          }
+        } else if (area.mode==='panel') {
+          detail = `${panels} panels`;
+        } else {
+          const baseSub = getSub(area.catId, area.subId);
+          detail = baseSub && baseSub.baseM2 ? `${baseSub.baseM2}m² (avg)` : 'Fixed rate';
+        }
         return `<div class="breakdown-row">
           <div>
             <div class="breakdown-name">${cat.icon} ${area.name||'Area '+(i+1)}</div>
@@ -1010,179 +999,6 @@ function emailQuote(target) {
 
 
 
-
-// ── Smart Quote Builder ────────────────────────────────────────────────────────
-let recognition = null;
-let isListening = false;
-
-function toggleMic() {
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    document.getElementById('smart-status').textContent = '⚠️ Mic not supported in this browser. Use Safari.';
-    return;
-  }
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    document.getElementById('smart-status').innerHTML = '🔒 Microphone requires a live connection. <strong>Type your description</strong> and tap Build Quote instead — mic will work once the app is live on Vercel.';
-    return;
-  }
-  if (isListening) {
-    recognition.stop();
-    return;
-  }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = 'en-GB';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onstart = () => {
-    isListening = true;
-    document.getElementById('mic-btn').classList.add('listening');
-    document.getElementById('mic-btn').textContent = '⏹️';
-    document.getElementById('smart-status').textContent = '🎤 Listening... speak now';
-  };
-  recognition.onresult = (e) => {
-    const transcript = e.results[0][0].transcript;
-    document.getElementById('smart-input').value = transcript;
-    document.getElementById('smart-status').textContent = '✅ Got it! Tap Build Quote.';
-  };
-  recognition.onend = () => {
-    isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('mic-btn').textContent = '🎤';
-  };
-  recognition.onerror = (e) => {
-    isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('mic-btn').textContent = '🎤';
-    document.getElementById('smart-status').textContent = '⚠️ Could not hear. Try again.';
-  };
-  recognition.start();
-}
-
-async function buildSmartQuote() {
-  const input = document.getElementById('smart-input').value.trim();
-  if (!input) { document.getElementById('smart-status').textContent = 'Please describe the job first.'; return; }
-
-  const statusEl = document.getElementById('smart-status');
-  const resultEl = document.getElementById('smart-result');
-  statusEl.textContent = '⚡ Building your quote...';
-  resultEl.className = 'smart-result';
-
-  // Build a summary of available services and rates for the AI
-  const servicesSummary = Object.entries(SERVICES).map(([catId, cat]) => {
-    const subs = cat.subs.filter(s => !s.isHeader).map(s => {
-      const r = rates[s.id];
-      if (s.perPanel) return `${s.label} (id:${s.id}, £${(r?.perPanel||s.perPanel).toFixed(2)}/panel)`;
-      if (s.baseM2) return `${s.label} (id:${s.id}, £${(r?.m2||s.m2).toFixed(2)}/m², base ${s.baseM2}m²)`;
-      if (catId==='gutters') return `${s.label} (id:${s.id}, flat £${(r?.flat||s.flat).toFixed(2)})`;
-      return `${s.label} (id:${s.id}, £${(r?.m2||s.m2).toFixed(2)}/m²)`;
-    }).join(', ');
-    return `${cat.label} [catId:${catId}]: ${subs}`;
-  }).join('\n');
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `You are a quoting assistant for Exterior Cleaning Co, a UK pressure washing company. 
-          
-The user has described a job. Extract all the areas/surfaces mentioned and match them to our services.
-
-AVAILABLE SERVICES AND RATES (all ex-VAT):
-${servicesSummary}
-
-USER JOB DESCRIPTION: "${input}"
-
-Respond ONLY with a valid JSON array (no other text, no markdown) of area objects like this:
-[
-  {
-    "name": "descriptive area name",
-    "catId": "category id from the list",
-    "subId": "sub service id from the list",
-    "mode": "m2 or flat or panel",
-    "m2": 47,
-    "panels": null,
-    "notes": "brief note"
-  }
-]
-
-Rules:
-- mode is "m2" for surface areas, "flat" for gutters/roofs/brickwork, "panel" for solar
-- For m2 mode, set m2 to the number mentioned or null if not mentioned
-- For panel mode, set panels to the number mentioned
-- For flat mode, m2 and panels are null
-- Match as closely as possible to available subIds
-- Split into separate objects if multiple surfaces mentioned`
-        }]
-      })
-    });
-
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-    const text = data.content?.map(c => c.text||'').join('');
-    const clean = text.replace(/\`\`\`json|\`\`\`/g,'').trim();
-    const areas = JSON.parse(clean);
-
-    if (!Array.isArray(areas) || areas.length === 0) throw new Error('No areas detected');
-
-    // Build area objects and add to state
-    const newAreas = areas.map(a => {
-      const area = newArea();
-      area.name = a.name || '';
-      area.catId = a.catId || 'driveways';
-      area.subId = a.subId || SERVICES[area.catId]?.subs.find(s=>!s.isHeader)?.id || '';
-      area.mode = a.mode || 'm2';
-      area.panels = a.panels ? String(a.panels) : '';
-      // Auto-set solar bracket
-      if (area.mode === 'panel' && a.panels) {
-        const n = parseInt(a.panels);
-        if (n <= 5) area.subId = 'solar15';
-        else if (n <= 10) area.subId = 'solar610';
-        else area.subId = 'solar11';
-      }
-      // Set measurements for m2 mode
-      if (area.mode === 'm2' && a.m2) {
-        // Use a single measurement row with width=m2, length=1 as a workaround
-        // Actually split into sensible w/l if possible
-        const m2 = parseFloat(a.m2);
-        const side = Math.sqrt(m2).toFixed(1);
-        area.measurements = [{w: String(side), l: String(side)}];
-      }
-      return area;
-    });
-
-    // Replace or append areas
-    if (state.areas.length === 1 && !state.areas[0].name && state.areas[0].measurements[0].w === '') {
-      state.areas = newAreas;
-    } else {
-      state.areas = [...state.areas, ...newAreas];
-    }
-
-    renderAreas();
-
-    // Show summary
-    const summary = areas.map(a => {
-      const cat = SERVICES[a.catId];
-      const sub = getSub(a.catId, a.subId);
-      const detail = a.mode==='m2' ? (a.m2 ? a.m2+'m²' : 'measure needed') : a.mode==='panel' ? a.panels+' panels' : 'fixed price';
-      return `✅ ${a.name} — ${sub?.label||''} (${detail})`;
-    }).join('<br>');
-
-    resultEl.innerHTML = `<strong>Quote built from your description:</strong><br>${summary}<br><span style="color:#888;font-size:11px;">Check measurements below and adjust if needed.</span>`;
-    resultEl.className = 'smart-result visible';
-    statusEl.textContent = '';
-    document.getElementById('smart-input').value = '';
-
-  } catch(err) {
-    statusEl.textContent = '⚠️ Could not build quote. Check internet and try again.';
-    resultEl.innerHTML = `<span style="color:#888;font-size:12px;">${err.message}</span>`;
-    resultEl.className = 'smart-result visible';
-  }
-}
 
 // ── AI Surface Recognition ────────────────────────────────────────────────────
 let currentCamAreaId = null;
