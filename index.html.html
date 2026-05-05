@@ -204,6 +204,12 @@
   .dash-summary-card{background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;padding:14px;text-align:center;}
   .dash-summary-card .val{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;color:#000;}
   .dash-summary-card .lbl{font-size:10px;color:#888;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+
+  /* Admin sub tabs */
+  #admin-subtabs{display:flex;gap:8px;margin-bottom:16px;}
+  .admin-sub-btn{flex:1;padding:10px 0;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:#fff;color:#555;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;transition:all 0.15s;}
+  .admin-sub-btn.active{background:#000;border-color:#000;color:#fff;}
+  #admin-content{min-height:200px;}
   /* Notes textarea */
   .mt14{margin-top:14px;}
 </style>
@@ -268,8 +274,7 @@
   <div id="tabs">
     <button class="tab-btn active" onclick="showTab('quote')">📋 Quote</button>
     <button class="tab-btn" onclick="showTab('summary')">📄 Summary</button>
-    <button class="tab-btn" onclick="requestRates()">💷 Rates</button>
-    <button class="tab-btn" onclick="requestDashboard()">📊 Dashboard</button>
+    <button class="tab-btn" onclick="requestAdmin()">⚙️ Admin</button>
   </div>
 
   <!-- CONTENT -->
@@ -279,7 +284,7 @@
       <div class="section-title">👤 Customer Details</div>
       <div class="card-flat" style="margin-bottom:20px;">
         <label class="field-label">Quoted By</label>
-        <select id="quoted-by" onchange="updateQuoteRef()" style="margin-bottom:10px;">
+        <select id="quoted-by" onchange="previewQuoteRef()" style="margin-bottom:10px;">
           <option value="">Select name...</option>
           <option value="Sam Williams">Sam Williams</option>
           <option value="Dean Blandford">Dean Blandford</option>
@@ -338,8 +343,8 @@
       <div id="rates-container"></div>
     </div>
 
-    <!-- Dashboard Tab -->
-    <div id="tab-dashboard" style="display:none;"></div>
+    <!-- Admin Tab -->
+    <div id="tab-admin" style="display:none;"></div>
 
     <!-- Summary Tab -->
     <div id="tab-summary" style="display:none;">
@@ -695,16 +700,14 @@ function toggleVAT() {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 function showTab(tab) {
-  // Tab order must match button order: quote, summary, rates, dashboard
-  ['quote','summary','rates','dashboard'].forEach((t, i) => {
+  ['quote','summary','admin'].forEach((t, i) => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
     const btn = document.querySelectorAll('.tab-btn')[i];
     if (btn) btn.classList.toggle('active', t === tab);
   });
   if (tab === 'summary') renderSummary();
-  if (tab === 'rates') renderRates();
-  if (tab === 'dashboard') renderDashboard();
+  if (tab === 'admin') renderAdmin();
 }
 
 // ── Rates tab ──────────────────────────────────────────────────────────────────
@@ -845,12 +848,12 @@ function renderSummary() {
     ${notes?`<div class="card-flat" style="margin-bottom:16px;"><div class="summary-label">NOTES</div><div style="color:#555;font-size:13px;line-height:1.6;">${notes}</div></div>`:''}
 
     <div class="quote-ref-line">${state.quoteRef} · ${state.today}</div>
-    <button onclick="saveQuoteToDashboard();alert('Quote saved to dashboard!');" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
+    <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Quote saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
     <button id="copy-btn" onclick="copyQuote()" style="margin-bottom:10px;">📋 COPY QUOTE TO CLIPBOARD</button>
-    <button onclick="saveAsPDF()" style="width:100%;padding:16px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">🖨️ SAVE / SHARE AS PDF</button>
+    <button onclick="lockQuoteRef();saveAsPDF();" style="width:100%;padding:16px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">🖨️ SAVE / SHARE AS PDF</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-      <button onclick="emailQuote('self')" style="padding:14px;border-radius:12px;border:1.5px solid #000000;background:#000000;color:#ffffff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
-      <button onclick="emailQuote('customer')" style="padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.04);color:#333;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
+      <button onclick="lockQuoteRef();emailQuote('self');" style="padding:14px;border-radius:12px;border:1.5px solid #000000;background:#000000;color:#ffffff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
+      <button onclick="lockQuoteRef();emailQuote('customer');" style="padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.04);color:#333;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
     </div>
     <div id="email-fallback" style="display:none;background:#f8f8f8;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:14px;margin-bottom:10px;">
       <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;margin-bottom:8px;color:#000;">📋 QUOTE COPIED — PASTE INTO YOUR EMAIL APP</div>
@@ -1418,6 +1421,117 @@ function saveAsPDF() {
 }
 
 
+
+// ── Admin Tab ──────────────────────────────────────────────────────────────────
+let adminSubTab = 'dashboard';
+
+function requestAdmin() {
+  if (pinUnlocked) { showTab('admin'); return; }
+  pinTarget = 'admin';
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+  document.getElementById('pin-sub').textContent = 'Enter your PIN to access Admin';
+  document.getElementById('pin-overlay').classList.remove('hidden');
+}
+
+function renderAdmin() {
+  const container = document.getElementById('tab-admin');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="section-title">⚙️ Admin</div>
+    <div id="admin-subtabs">
+      <button class="admin-sub-btn ${adminSubTab==='dashboard'?'active':''}" onclick="switchAdminTab('dashboard')">📊 Dashboard</button>
+      <button class="admin-sub-btn ${adminSubTab==='rates'?'active':''}" onclick="switchAdminTab('rates')">💷 Rates</button>
+    </div>
+    <div id="admin-content"></div>
+  `;
+  renderAdminContent();
+}
+
+function switchAdminTab(sub) {
+  adminSubTab = sub;
+  // Update buttons
+  document.querySelectorAll('.admin-sub-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', ['dashboard','rates'][i] === sub);
+  });
+  renderAdminContent();
+}
+
+function renderAdminContent() {
+  const container = document.getElementById('admin-content');
+  if (!container) return;
+  if (adminSubTab === 'dashboard') {
+    renderDashboard();
+    // Move dashboard content into admin-content
+    const dashEl = document.getElementById('tab-dashboard');
+    if (dashEl) container.innerHTML = dashEl.innerHTML;
+    else renderDashboardInto(container);
+  } else {
+    renderRatesInto(container);
+  }
+}
+
+function renderDashboardInto(container) {
+  const key = 'ecc_dashboard_quotes';
+  const allQuotes = JSON.parse(localStorage.getItem(key) || '[]');
+  const wonQuotes = allQuotes.filter(q => q.status === 'won');
+  const wonValue = wonQuotes.reduce((s,q) => s+q.total, 0);
+
+  let html = `
+    <div class="dash-summary-bar">
+      <div class="dash-summary-card"><div class="val">${allQuotes.length}</div><div class="lbl">Total Quotes</div></div>
+      <div class="dash-summary-card"><div class="val">${wonQuotes.length}</div><div class="lbl">Jobs Won</div></div>
+      <div class="dash-summary-card"><div class="val">${fmt(wonValue)}</div><div class="lbl">Won Value</div></div>
+    </div>`;
+
+  OPERATIVES.forEach(op => {
+    const opQuotes = allQuotes.filter(q => q.operative === op).sort((a,b) => b.savedAt - a.savedAt);
+    if (opQuotes.length === 0) return;
+    const opWon = opQuotes.filter(q => q.status === 'won');
+    const opTotal = opQuotes.reduce((s,q) => s+q.total, 0);
+
+    html += `<div class="dash-operative">
+      <div class="dash-op-header">
+        <span>${op}</span>
+        <div class="dash-op-stats">
+          <div class="dash-stat"><div class="dash-stat-val">${opQuotes.length}</div><div class="dash-stat-lbl">QUOTES</div></div>
+          <div class="dash-stat"><div class="dash-stat-val">${opWon.length}</div><div class="dash-stat-lbl">WON</div></div>
+          <div class="dash-stat"><div class="dash-stat-val">${fmt(opTotal)}</div><div class="dash-stat-lbl">VALUE</div></div>
+        </div>
+      </div>`;
+
+    opQuotes.forEach(q => {
+      html += `<div class="dash-quote-row">
+        <div class="dash-quote-info">
+          <div class="dash-quote-ref">${q.ref}</div>
+          <div class="dash-quote-detail">${q.customer}${q.address?' · '+q.address:''} · ${q.date}</div>
+        </div>
+        <div class="dash-quote-val">${fmt(q.total)}</div>
+        <button class="dash-tick-btn ${q.status==='won'?'won':''}" onclick="updateQuoteStatus('${q.ref}','won');renderAdminContent();" title="Job won">✅</button>
+        <button class="dash-tick-btn ${q.status==='lost'?'lost':''}" onclick="updateQuoteStatus('${q.ref}','lost');renderAdminContent();" title="Job lost">❌</button>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  if (allQuotes.length === 0) {
+    html += `<div class="dash-empty" style="margin-top:20px;">No quotes saved yet.<br>Complete a quote and tap Save to Dashboard.</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderRatesInto(container) {
+  // Reuse existing renderRates but target our container
+  const tempDiv = document.getElementById('rates-container');
+  renderRates();
+  if (tempDiv) container.innerHTML = `<div id="rates-container">${tempDiv.innerHTML}</div>`;
+  else {
+    container.innerHTML = '<div id="rates-container"></div>';
+    renderRates();
+  }
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 const OPERATIVES = ['Sam Williams','Dean Blandford','Ben Pugh','Mick Lowe','Chris Shenton'];
 
@@ -1550,12 +1664,33 @@ function generateQuoteRef(operativeName) {
   return 'ECC-' + year + '-' + num;
 }
 
-function updateQuoteRef() {
+function previewQuoteRef() {
+  // Just show a preview of what the next number will be — don't increment yet
+  const operativeName = document.getElementById('quoted-by')?.value || '';
+  const year = String(new Date().getFullYear()).slice(-2);
+  let preview = '';
+  if (operativeName && OPERATIVE_CODES[operativeName]) {
+    const code = OPERATIVE_CODES[operativeName];
+    const key = 'ecc_quote_num_' + code + year;
+    const current = parseInt(localStorage.getItem(key) || '0');
+    preview = 'ECC-' + code + year + '-' + String(current + 1).padStart(3, '0');
+  } else {
+    const key = 'ecc_quote_num_GEN' + year;
+    const current = parseInt(localStorage.getItem(key) || '0');
+    preview = 'ECC-' + year + '-' + String(current + 1).padStart(3, '0');
+  }
+  state.quoteRef = preview;
+  const metaEl = document.getElementById('qmeta');
+  if (metaEl) metaEl.textContent = preview + ' · ' + state.today + ' (preview)';
+}
+
+function lockQuoteRef() {
+  // Called when quote is saved/submitted — actually increments the counter
   const operativeName = document.getElementById('quoted-by')?.value || '';
   state.quoteRef = generateQuoteRef(operativeName);
-  // Update header display
   const metaEl = document.getElementById('qmeta');
   if (metaEl) metaEl.textContent = state.quoteRef + ' · ' + state.today;
+  return state.quoteRef;
 }
 
 // ── PIN Lock ───────────────────────────────────────────────────────────────────
@@ -1568,7 +1703,6 @@ function closePinOverlay() {
   pinBuffer = '';
   updatePinDots();
   document.getElementById('pin-error').textContent = '';
-  showTab('quote');
 }
 
 let pinTarget = 'rates';
@@ -1602,7 +1736,9 @@ function pinKey(digit) {
       if (pinBuffer === CORRECT_PIN) {
         pinUnlocked = true;
         document.getElementById('pin-overlay').classList.add('hidden');
-        showTab(pinTarget);
+        if (pinTarget === 'rates') { adminSubTab = 'rates'; showTab('admin'); }
+        else if (pinTarget === 'dashboard') { adminSubTab = 'dashboard'; showTab('admin'); }
+        else showTab(pinTarget);
       } else {
         document.getElementById('pin-error').textContent = 'Incorrect PIN. Try again.';
         pinBuffer = '';
@@ -1645,7 +1781,7 @@ if (localStorage.getItem('ecc_counter_version') !== COUNTER_VERSION) {
 }
 
 const qmetaEl = document.getElementById('qmeta');
-if (qmetaEl) qmetaEl.textContent = state.quoteRef + ' · ' + state.today;
+if (qmetaEl) qmetaEl.textContent = 'Select operative above · ' + state.today;
 addArea(); // start with one area
 </script>
 </body>
