@@ -820,6 +820,12 @@ function renderSummary() {
       <button onclick="emailQuote('self')" style="padding:14px;border-radius:12px;border:1.5px solid #000000;background:#000000;color:#ffffff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
       <button onclick="emailQuote('customer')" style="padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.04);color:#333;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
     </div>
+    <div id="email-fallback" style="display:none;background:#f8f8f8;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:14px;margin-bottom:10px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;margin-bottom:8px;color:#000;">📋 QUOTE COPIED — PASTE INTO YOUR EMAIL APP</div>
+      <div style="font-size:11px;color:#888;margin-bottom:10px;">The quote has been copied to your clipboard. Open your Mail app, create a new email and paste it in.</div>
+      <input id="email-to-field" placeholder="Customer email address" type="email" style="margin-bottom:8px;">
+      <button onclick="tryMailto()" style="width:100%;padding:11px;border-radius:10px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 OPEN MAIL APP</button>
+    </div>
   `;
   document.getElementById('summary-content').innerHTML = html;
 }
@@ -943,7 +949,7 @@ function setDiscount(pct) {
 
 
 // ── Email quote ────────────────────────────────────────────────────────────────
-function emailQuote(target) {
+function buildQuoteText() {
   const { subtotal, afterDisc, vatAmt, total } = recalc();
   const disc = activeDiscPct > 0 ? subtotal * (activeDiscPct/100) : 0;
   const notes = document.getElementById('notes')?.value||'';
@@ -951,9 +957,10 @@ function emailQuote(target) {
   const custAddr = document.getElementById('cust-address')?.value||'';
   const custPhone = document.getElementById('cust-phone')?.value||'';
   const custEmail = document.getElementById('cust-email')?.value||'';
+  const quotedBy = document.getElementById('quoted-by')?.value||'';
 
-  const body = [
-    'EXTERIOR CLEANING CO — QUOTE',
+  const lines = [
+    'EXTERIOR CLEANING CO - QUOTE',
     '-----------------------------------',
     'Ref:   ' + state.quoteRef,
     quotedBy ? 'Quoted by: ' + quotedBy : null,
@@ -961,53 +968,100 @@ function emailQuote(target) {
     '',
     'CUSTOMER',
     custName,
-    custAddr, custPhone, custEmail,
+    custAddr,
+    custPhone,
+    custEmail,
     '',
     'AREAS',
-    ...state.areas.map((area,i) => {
+    ...state.areas.map((area, i) => {
       const cat = SERVICES[area.catId];
       const sub = getSub(area.catId, area.subId);
       const st = getSubtotal(area);
       const panels = parseFloat(area.panels)||(sub?.avgPanels||0);
       let detail = '';
-      if (area.mode==='m2') {
-        const measLines = (area.measurements||[]).filter(m=>parseFloat(m.w)&&parseFloat(m.l)).map((m,i)=>`    Row ${i+1}: ${m.w}m × ${m.l}m = ${((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(1)}m²`).join('\n');
-        const totalM2e = (area.measurements||[]).reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
-        detail = totalM2e.toFixed(1)+'m² @ £'+(rates[area.subId]?.m2||0).toFixed(2)+'/m²\n'+measLines;
+      if (area.mode === 'm2') {
+        const measRows = (area.measurements||[]).filter(m=>parseFloat(m.w)&&parseFloat(m.l));
+        const totalM2e = measRows.reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
+        const rowDetail = measRows.map((m,ri)=>`  Row ${ri+1}: ${m.w}m x ${m.l}m = ${((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(1)}m2`).join('\n');
+        detail = totalM2e.toFixed(1)+'m2 @ '+fmt(rates[area.subId]?.m2||0)+'/m2\n'+rowDetail;
+      } else if (area.mode === 'panel') {
+        detail = panels+' panels @ '+fmt(rates[area.subId]?.perPanel||0)+'/panel';
+      } else {
+        const baseSub = getSub(area.catId, area.subId);
+        detail = baseSub && baseSub.baseM2 ? baseSub.baseM2+'m2 avg' : 'Fixed rate';
       }
-      else if (area.mode==='panel') detail=panels+' panels @ £'+(rates[area.subId]?.perPanel||0).toFixed(2)+'/panel';
-      else detail='Flat rate';
-      return '  '+(area.name||'Area '+(i+1))+' ('+sub?.label+') — '+detail+' = '+fmt(st);
+      return (area.name||'Area '+(i+1))+' ('+( sub?.label||'')+') - '+detail+' = '+fmt(st);
     }),
     '',
     'Ex VAT:    ' + fmt(afterDisc),
     state.vatOn ? 'VAT (20%): ' + fmt(vatAmt) : null,
-    disc>0 ? 'Discount ('+activeDiscPct+'%): -'+fmt(disc) : null,
+    disc > 0 ? 'Discount ('+activeDiscPct+'%): -'+fmt(disc) : null,
     'TOTAL INC: ' + fmt(total),
-    notes ? '\nNotes: '+notes : null,
+    notes ? 'Notes: '+notes : null,
     '',
-    '\n-----------------------------------',
-    'Exterior Cleaning Co\nUnit 10B, Moston Road, Sandbach, CW11 3HL\nTel: 01270 447960 / 07798885884\nEmail: info@exteriorcleaningco.com\nWebsite: www.exteriorcleaningco.com',
     '-----------------------------------',
-  ].filter(x=>x!==null&&x!==undefined).join('\n');
+    'Exterior Cleaning Co',
+    'Unit 10B, Moston Road, Sandbach, CW11 3HL',
+    'Tel: 01270 447960 / 07798885884',
+    'Email: info@exteriorcleaningco.com',
+    'Website: www.exteriorcleaningco.com',
+    '-----------------------------------',
+  ].filter(x => x !== null && x !== undefined).join('\n');
 
-  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
-  const bodyEnc = encodeURIComponent(body);
-  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || '');
-  const mailtoLink = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
-  
-  // iOS Safari fix - use anchor click instead of window.location
-  const a = document.createElement('a');
-  a.href = mailtoLink;
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => document.body.removeChild(a), 500);
+  return { lines, custName, custEmail: document.getElementById('cust-email')?.value||'' };
 }
 
+function emailQuote(target) {
+  const { lines, custName, custEmail } = buildQuoteText();
 
+  // Copy to clipboard first
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lines).catch(() => {});
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = lines;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+  }
 
+  // Try mailto
+  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || '');
+  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
+  const bodyEnc = encodeURIComponent(lines);
+  const mailtoLink = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
 
+  // Try opening mail app
+  const a = document.createElement('a');
+  a.href = mailtoLink;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Show fallback after short delay in case mail didn't open
+  setTimeout(() => {
+    const fb = document.getElementById('email-fallback');
+    if (fb) {
+      fb.style.display = 'block';
+      if (target === 'customer' && custEmail) {
+        document.getElementById('email-to-field').value = custEmail;
+      }
+    }
+  }, 1500);
+}
+
+let storedQuoteLines = '';
+function tryMailto() {
+  const { lines, custName } = buildQuoteText();
+  const toAddr = document.getElementById('email-to-field')?.value || '';
+  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
+  const bodyEnc = encodeURIComponent(lines);
+  window.location.href = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
+}
 
 // ── AI Surface Recognition ────────────────────────────────────────────────────
 let currentCamAreaId = null;
