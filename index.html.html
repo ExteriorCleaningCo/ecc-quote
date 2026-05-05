@@ -1772,9 +1772,11 @@ const _origShowTab = showTab;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 // Reset all quote counters to start from 001
-const COUNTER_VERSION = 'v2';
+const COUNTER_VERSION = 'v3';
 if (localStorage.getItem('ecc_counter_version') !== COUNTER_VERSION) {
-  ['SW26','DB26','BP26','ML26','CS26','GEN26'].forEach(code => {
+  ['SW26','DB26','BP26','ML26','CS26','GEN26',
+   'SW25','DB25','BP25','ML25','CS25','GEN25',
+   'SW24','DB24','BP24','ML24','CS24','GEN24'].forEach(code => {
     localStorage.removeItem('ecc_quote_num_' + code);
   });
   localStorage.setItem('ecc_counter_version', COUNTER_VERSION);
