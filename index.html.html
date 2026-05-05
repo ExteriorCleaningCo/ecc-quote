@@ -218,6 +218,7 @@
       <button class="pin-key" onclick="pinKey('0')">0</button>
       <button class="pin-key del" onclick="pinDel()">⌫</button>
     </div>
+    <button onclick="closePinOverlay()" style="margin-top:20px;padding:12px 32px;border-radius:10px;border:1px solid rgba(0,0,0,0.15);background:transparent;color:#888;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;">← BACK</button>
   </div>
 
   <!-- HEADER -->
@@ -419,7 +420,7 @@ let areaCounter = 0;
 function newArea() {
   return {
     id: ++areaCounter,
-    name: '',
+    name: SERVICES['driveways'].label,
     catId: 'driveways',
     subId: SERVICES['driveways'].subs[0].id,
     mode: 'm2',   // 'm2', 'flat', 'panel'
@@ -556,7 +557,7 @@ function buildAreaCard(area, idx) {
   div.id = 'area-card-' + area.id;
   div.innerHTML = `
     <div class="area-header">
-      <span class="area-label">${cat.icon} Area ${idx+1}</span>
+      <span class="area-label">${cat.icon} ${cat.label}</span>
       <button class="remove-btn" onclick="removeArea(${area.id})">REMOVE</button>
     </div>
     <input placeholder="Area name (e.g. Front Driveway)" value="${area.name}"
@@ -834,7 +835,7 @@ function copyQuote() {
   const quotedBy = document.getElementById('quoted-by')?.value||'';
   const lines = [
     'EXTERIOR CLEANING CO — QUOTE',
-    '─'.repeat(36),
+    '-----------------------------------',
     `Ref:   ${state.quoteRef}`,
     `Date:  ${state.today}`,
     '',
@@ -860,11 +861,11 @@ function copyQuote() {
     state.vatOn?`VAT (20%): ${fmt(vatAmt)}`:null,
     `TOTAL:     ${fmt(total)}`,
     notes?`\nNotes: ${notes}`:null,
-    '\n─────────────────────────────────────────',
+    '\n-----------------------------------',
     'Exterior Cleaning Co',
     'Tel: 01270 447960 / 07798885884 | info@exteriorcleaningco.com',
     'www.exteriorcleaningco.com',
-    '─────────────────────────────────────────',
+    '-----------------------------------',
   ].filter(x=>x!==null&&x!==undefined).join('\n');
 
   if (navigator.clipboard) {
@@ -953,7 +954,7 @@ function emailQuote(target) {
 
   const body = [
     'EXTERIOR CLEANING CO — QUOTE',
-    '─'.repeat(36),
+    '-----------------------------------',
     'Ref:   ' + state.quoteRef,
     quotedBy ? 'Quoted by: ' + quotedBy : null,
     'Date:  ' + state.today,
@@ -985,15 +986,23 @@ function emailQuote(target) {
     'TOTAL INC: ' + fmt(total),
     notes ? '\nNotes: '+notes : null,
     '',
-    '\n─────────────────────────────────────────',
+    '\n-----------------------------------',
     'Exterior Cleaning Co\nUnit 10B, Moston Road, Sandbach, CW11 3HL\nTel: 01270 447960 / 07798885884\nEmail: info@exteriorcleaningco.com\nWebsite: www.exteriorcleaningco.com',
-    '─────────────────────────────────────────',
+    '-----------------------------------',
   ].filter(x=>x!==null&&x!==undefined).join('\n');
 
-  const subject = encodeURIComponent('Exterior Cleaning Co — Quote ' + state.quoteRef + ' for ' + custName);
+  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
   const bodyEnc = encodeURIComponent(body);
   const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || '');
-  window.location.href = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
+  const mailtoLink = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
+  
+  // iOS Safari fix - use anchor click instead of window.location
+  const a = document.createElement('a');
+  a.href = mailtoLink;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 500);
 }
 
 
@@ -1211,6 +1220,14 @@ function removeMeasRow(areaId, idx) {
 const CORRECT_PIN = '030484';
 let pinBuffer = '';
 let pinUnlocked = false;
+
+function closePinOverlay() {
+  document.getElementById('pin-overlay').classList.add('hidden');
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+  showTab('quote');
+}
 
 function requestRates() {
   if (pinUnlocked) {
