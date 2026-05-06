@@ -937,54 +937,32 @@ async function lookupPostcode() {
   picker.innerHTML = '<option value="">Select address...</option>';
 
   try {
-    // Use ideal-postcodes API - no CORS issues, free tier available
-    const res = await fetch(
-      'https://api.ideal-postcodes.co.uk/v1/postcodes/' + encodeURIComponent(pc) + '?api_key=ak_test'
-    );
+    // Call our Vercel serverless proxy — no CORS issues
+    const res = await fetch('/api/lookup?postcode=' + encodeURIComponent(pc));
     const data = await res.json();
 
-    if (data.result && data.result.length > 0) {
-      status.textContent = '✅ ' + data.result.length + ' addresses found';
+    if (data.addresses && data.addresses.length > 0) {
+      status.textContent = '✅ ' + data.addresses.length + ' addresses found';
       picker.style.display = '';
       picker.innerHTML = '<option value="">Select your address...</option>';
-      data.result.forEach(addr => {
-        const parts = [addr.line_1, addr.line_2, addr.line_3, addr.post_town, addr.county]
-          .filter(p => p && p.trim() !== '');
+      data.addresses.forEach(addr => {
+        const parts = [
+          addr.line_1, addr.line_2, addr.line_3, addr.line_4,
+          addr.locality, addr.town_or_city, addr.county
+        ].filter(p => p && p.trim() !== '');
         const fullAddr = parts.join(', ') + ', ' + pc;
         const option = document.createElement('option');
         option.value = fullAddr;
-        option.textContent = [addr.line_1, addr.line_2, addr.post_town].filter(Boolean).join(', ');
+        option.textContent = [addr.line_1, addr.line_2, addr.town_or_city].filter(Boolean).join(', ');
         picker.appendChild(option);
       });
+    } else if (data.Message) {
+      status.textContent = '❌ ' + data.Message + '. Please type manually.';
     } else {
-      // Fallback: try getaddress.io with CORS proxy
-      const proxyRes = await fetch(
-        'https://api.getaddress.io/find/' + encodeURIComponent(pc) + '?api-key=' + GETADDRESS_KEY + '&expand=true',
-        { headers: { 'Accept': 'application/json' } }
-      );
-      const proxyData = await proxyRes.json();
-      if (proxyData.addresses && proxyData.addresses.length > 0) {
-        status.textContent = '✅ ' + proxyData.addresses.length + ' addresses found';
-        picker.style.display = '';
-        picker.innerHTML = '<option value="">Select your address...</option>';
-        proxyData.addresses.forEach(addr => {
-          const parts = [addr.line_1, addr.line_2, addr.line_3, addr.town_or_city]
-            .filter(p => p && p.trim() !== '');
-          const fullAddr = parts.join(', ') + ', ' + pc;
-          const option = document.createElement('option');
-          option.value = fullAddr;
-          option.textContent = parts.slice(0,3).join(', ');
-          picker.appendChild(option);
-        });
-      } else {
-        status.textContent = '❌ No addresses found. Please type manually.';
-      }
+      status.textContent = '❌ No addresses found. Please type manually.';
     }
   } catch(e) {
-    status.textContent = '⚠️ Enter postcode above and type address manually.';
-    // Pre-fill postcode into address field as helpful fallback
-    const addrField = document.getElementById('cust-address');
-    if (addrField && !addrField.value) addrField.value = pc;
+    status.textContent = '⚠️ Lookup failed — please type address manually.';
   }
 }
 
@@ -1103,7 +1081,7 @@ function emailQuote(target) {
   }
 
   // Try mailto
-  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || '');
+  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || 'info@exteriorcleaningco.com');
   const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
   const bodyEnc = encodeURIComponent(lines);
   const mailtoLink = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
@@ -1347,7 +1325,7 @@ function removeMeasRow(areaId, idx) {
 
 // ── Save as PDF ────────────────────────────────────────────────────────────────
 function saveAsPDF() {
-  // Build a clean printable version of the quote
+  lockQuoteRef();
   const { subtotal, afterDisc, vatAmt, total } = recalc();
   const disc = activeDiscPct > 0 ? subtotal * (activeDiscPct/100) : 0;
   const notes = document.getElementById('notes')?.value||'';
@@ -1357,27 +1335,55 @@ function saveAsPDF() {
   const custEmail = document.getElementById('cust-email')?.value||'';
   const quotedBy = document.getElementById('quoted-by')?.value||'';
 
+  // Expiry date = today + 30 days
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + 30);
+  const expiryStr = expiryDate.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+
+  // Build address lines
+  const addrLines = custAddr.split(',').map(s => s.trim()).filter(Boolean);
+  const addrHTML = [custName, ...addrLines, custPhone ? 'Tel: ' + custPhone : '', custEmail].filter(Boolean).map(l => `<div>${l}</div>`).join('');
+
+  // Build area rows
   const areaRows = state.areas.map((area, i) => {
     const cat = SERVICES[area.catId];
     const sub = getSub(area.catId, area.subId);
     const st = getSubtotal(area);
-    const panels = parseFloat(area.panels)||(sub?.avgPanels||0);
-    let detail = '';
+    const rateM2 = rates[area.subId]?.m2 || 0;
+    const rateFlat = rates[area.subId]?.flat || 0;
+    const ratePanel = rates[area.subId]?.perPanel || 0;
+
+    let qty = '', unitPrice = '', description = '';
+    const areaName = area.name || ('Area ' + (i+1));
+
     if (area.mode === 'm2') {
       const measRows = (area.measurements||[]).filter(m=>parseFloat(m.w)&&parseFloat(m.l));
-      const totalM2e = measRows.reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
-      const rowDetail = measRows.map((m,ri)=>`<span style="color:#555;font-size:11px;">&nbsp;&nbsp;Row ${ri+1}: ${m.w}m × ${m.l}m = ${((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(1)}m²</span>`).join('<br>');
-      detail = `${totalM2e.toFixed(1)}m² @ ${fmt(rates[area.subId]?.m2||0)}/m²<br>${rowDetail}`;
+      const totalM2 = measRows.reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
+      const measDetail = measRows.length > 1
+        ? measRows.map((m,ri)=>`Row ${ri+1}: ${m.w}m x ${m.l}m = ${((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(2)}m²`).join(' | ')
+        : measRows.length === 1 ? `${measRows[0].w}m x ${measRows[0].l}m` : '';
+      qty = totalM2.toFixed(2);
+      unitPrice = fmt(rateM2);
+      description = `<strong>${areaName}</strong> — ${sub?.label||''}. Pre Treatment Applied & Full High Pressure Clean Undertaken. (All Areas Measured & Priced On a M2 Rate)${measDetail ? '<br><span style="color:#777;font-size:11px;">' + measDetail + '</span>' : ''}`;
     } else if (area.mode === 'panel') {
-      detail = `${panels} panels @ ${fmt(rates[area.subId]?.perPanel||0)}/panel`;
+      const panels = parseFloat(area.panels)||0;
+      qty = panels.toString();
+      unitPrice = fmt(ratePanel);
+      description = `<strong>${areaName}</strong> — ${sub?.label||''}. Professional solar panel cleaning undertaken.`;
     } else {
+      qty = '1.00';
       const baseSub = getSub(area.catId, area.subId);
-      detail = baseSub && baseSub.baseM2 ? `${baseSub.baseM2}m² (avg)` : 'Fixed rate';
+      unitPrice = fmt(baseSub && baseSub.baseM2 ? baseSub.baseM2 * rateM2 : (parseFloat(area.flatPrice)||rateFlat));
+      description = `<strong>${areaName}</strong> — ${sub?.label||''}.`;
     }
+
+    const vatRate = '20%';
     return `<tr>
-      <td style="padding:10px 8px;border-bottom:1px solid #eee;font-size:13px;"><strong>${area.name||'Area '+(i+1)}</strong><br><span style="color:#777;font-size:11px;">${sub?.label||''}</span></td>
-      <td style="padding:10px 8px;border-bottom:1px solid #eee;font-size:12px;color:#555;">${detail}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #eee;font-size:14px;font-weight:700;text-align:right;">${fmt(st)}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e8e8e8;font-size:12px;line-height:1.5;">${description}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e8e8e8;font-size:12px;text-align:center;">${qty}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e8e8e8;font-size:12px;text-align:center;">${unitPrice}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e8e8e8;font-size:12px;text-align:center;">${vatRate}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e8e8e8;font-size:12px;text-align:right;font-weight:600;">${fmt(st)}</td>
     </tr>`;
   }).join('');
 
@@ -1385,293 +1391,104 @@ function saveAsPDF() {
   <title>Quote ${state.quoteRef}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;color:#000;padding:30px;max-width:700px;margin:0 auto;}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #000;}
-    .company-name{font-size:22px;font-weight:900;letter-spacing:1px;}
-    .company-name span{font-size:13px;font-weight:400;color:#555;display:block;margin-top:4px;}
-    .quote-ref{text-align:right;}
-    .quote-ref h2{font-size:18px;font-weight:900;}
-    .quote-ref p{font-size:12px;color:#555;margin-top:2px;}
-    .section{margin-bottom:24px;}
-    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#555;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:4px;}
-    .customer-name{font-size:16px;font-weight:700;margin-bottom:4px;}
-    .customer-detail{font-size:13px;color:#555;margin-bottom:2px;}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-    th{background:#000;color:#fff;padding:10px 8px;font-size:11px;text-align:left;letter-spacing:1px;}
-    th:last-child{text-align:right;}
-    .totals-table td{padding:6px 8px;font-size:13px;}
-    .totals-table tr:last-child td{font-size:16px;font-weight:900;border-top:2px solid #000;padding-top:10px;}
-    .footer{margin-top:30px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#777;text-align:center;line-height:1.8;}
-    ${quotedBy ? '.quoted-by{font-size:12px;color:#555;margin-top:6px;}' : ''}
-    @media print{body{padding:15px;}}
+    body{font-family:Arial,sans-serif;color:#000;font-size:13px;}
+    .page{max-width:800px;margin:0 auto;padding:30px 40px;}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;}
+    .logo{width:120px;height:auto;}
+    .quote-title{font-size:42px;font-weight:900;letter-spacing:2px;margin-top:8px;}
+    .header-right{text-align:right;font-size:12px;line-height:1.7;color:#333;}
+    .header-right strong{font-weight:700;}
+    .info-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:30px;padding-bottom:20px;border-bottom:1px solid #ddd;}
+    .info-block{}
+    .info-block .lbl{font-weight:700;font-size:11px;margin-bottom:2px;}
+    .info-block .val{font-size:12px;color:#333;line-height:1.6;}
+    table{width:100%;border-collapse:collapse;margin-bottom:0;}
+    thead tr{background:#000;color:#fff;}
+    thead th{padding:10px 8px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-align:left;}
+    thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4){text-align:center;}
+    thead th:last-child{text-align:right;}
+    tbody tr:nth-child(even){background:#f9f9f9;}
+    .totals{margin-left:auto;width:280px;margin-top:0;}
+    .totals table{border:none;}
+    .totals td{padding:6px 8px;font-size:13px;border-bottom:1px solid #eee;}
+    .totals tr:last-child td{font-size:15px;font-weight:900;border-top:2px solid #000;border-bottom:none;padding-top:10px;}
+    .footer{margin-top:40px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#777;text-align:center;line-height:1.8;}
+    ${notes ? '.notes{margin-top:20px;padding:12px;background:#f9f9f9;border:1px solid #eee;border-radius:4px;font-size:12px;}' : ''}
+    @media print{
+      body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .page{padding:15px 20px;}
+    }
   </style></head><body>
-  <div class="header">
-    <div>
-      <div class="company-name">EXTERIOR CLEANING CO<span>Unit 10B, Moston Road, Sandbach, CW11 3HL</span></div>
-    </div>
-    <div class="quote-ref">
-      <h2>${state.quoteRef}</h2>
-      <p>${state.today}</p>
-      ${quotedBy ? `<p style="margin-top:4px;font-size:11px;">Quoted by: ${quotedBy}</p>` : ''}
-    </div>
-  </div>
+  <div class="page">
 
-  <div class="section">
-    <div class="section-title">Customer</div>
-    <div class="customer-name">${custName||'—'}</div>
-    ${custAddr ? `<div class="customer-detail">${custAddr}</div>` : ''}
-    ${custPhone ? `<div class="customer-detail">${custPhone}</div>` : ''}
-    ${custEmail ? `<div class="customer-detail">${custEmail}</div>` : ''}
-  </div>
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <img src="${logo_data}" class="logo" alt="Exterior Cleaning Co">
+        <div class="quote-title">QUOTE</div>
+        <div style="margin-top:12px;font-size:12px;line-height:1.8;color:#333;">
+          ${addrHTML}
+        </div>
+      </div>
+      <div class="header-right">
+        <strong>Date</strong><br>${state.today}<br><br>
+        <strong>Expiry</strong><br>${expiryStr}<br><br>
+        <strong>Quote Number</strong><br>${state.quoteRef}<br><br>
+        ${quotedBy ? `<strong>Quoted By</strong><br>${quotedBy}<br><br>` : ''}
+        <strong>VAT Number</strong><br>454194386<br><br>
+        <div style="margin-top:8px;color:#333;">
+          Exterior Cleaning Co (NW) Ltd<br>
+          Unit 10B<br>
+          Moston Road<br>
+          Sandbach<br>
+          Cheshire<br>
+          CW11 3HL<br>
+          UNITED KINGDOM
+        </div>
+      </div>
+    </div>
 
-  <div class="section">
-    <div class="section-title">Quote Breakdown</div>
+    <!-- Line items table -->
     <table>
-      <thead><tr>
-        <th>Area</th><th>Details</th><th style="text-align:right;">Price</th>
-      </tr></thead>
+      <thead>
+        <tr>
+          <th style="width:50%;">Description</th>
+          <th style="width:12%;">Quantity</th>
+          <th style="width:13%;">Unit Price</th>
+          <th style="width:10%;">VAT</th>
+          <th style="width:15%;">Amount GBP</th>
+        </tr>
+      </thead>
       <tbody>${areaRows}</tbody>
     </table>
-  </div>
 
-  <table class="totals-table" style="width:300px;margin-left:auto;">
-    <tr><td>Ex VAT</td><td style="text-align:right;">${fmt(afterDisc)}</td></tr>
-    ${disc>0?`<tr><td>Discount (${activeDiscPct}%)</td><td style="text-align:right;">-${fmt(disc)}</td></tr>`:''}
-    ${state.vatOn?`<tr><td>VAT (20%)</td><td style="text-align:right;">${fmt(vatAmt)}</td></tr>`:''}
-    <tr><td>TOTAL INC VAT</td><td style="text-align:right;">${fmt(total)}</td></tr>
-  </table>
+    <!-- Totals -->
+    <div style="display:flex;justify-content:flex-end;margin-top:0;">
+      <table class="totals" style="width:280px;">
+        <tr><td>Subtotal</td><td style="text-align:right;">${fmt(afterDisc)}</td></tr>
+        ${disc > 0 ? `<tr><td>Discount (${activeDiscPct}%)</td><td style="text-align:right;">-${fmt(disc)}</td></tr>` : ''}
+        ${state.vatOn ? `<tr><td>Total VAT 20%</td><td style="text-align:right;">${fmt(vatAmt)}</td></tr>` : ''}
+        <tr><td><strong>TOTAL GBP</strong></td><td style="text-align:right;"><strong>${fmt(total)}</strong></td></tr>
+      </table>
+    </div>
 
-  ${notes?`<div class="section"><div class="section-title">Notes</div><p style="font-size:13px;color:#555;">${notes}</p></div>`:''}
+    ${notes ? `<div class="notes"><strong>Notes:</strong> ${notes}</div>` : ''}
 
-  <div class="footer">
-    Tel: 01270 447960 / 07798885884 &nbsp;|&nbsp; info@exteriorcleaningco.com &nbsp;|&nbsp; www.exteriorcleaningco.com<br>
-    This quote is valid for 30 days from the date of issue.
+    <!-- Footer -->
+    <div class="footer">
+      Company Registration No: 14718024. &nbsp;|&nbsp; Registered Office: Unit 10B, Moston Road, Sandbach, Cheshire, CW11 3HL, United Kingdom.<br>
+      Tel: 01270 447960 / 07798885884 &nbsp;|&nbsp; info@exteriorcleaningco.com &nbsp;|&nbsp; www.exteriorcleaningco.com
+    </div>
+
   </div>
   </body></html>`;
 
   const printWin = window.open('', '_blank');
+  if (!printWin) { alert('Please allow pop-ups to save the PDF.'); return; }
   printWin.document.write(printHTML);
   printWin.document.close();
   printWin.focus();
-  setTimeout(() => {
-    printWin.print();
-  }, 500);
-}
-
-
-
-// ── Admin Tab ──────────────────────────────────────────────────────────────────
-let adminSubTab = 'dashboard';
-
-function requestAdmin() {
-  if (pinUnlocked) { showTab('admin'); return; }
-  pinTarget = 'admin';
-  pinBuffer = '';
-  updatePinDots();
-  document.getElementById('pin-error').textContent = '';
-  document.getElementById('pin-sub').textContent = 'Enter your PIN to access Admin';
-  document.getElementById('pin-overlay').classList.remove('hidden');
-}
-
-function renderAdmin() {
-  const container = document.getElementById('tab-admin');
-  if (!container) return;
-  container.innerHTML = `
-    <div class="section-title">⚙️ Admin</div>
-    <div id="admin-subtabs">
-      <button class="admin-sub-btn ${adminSubTab==='dashboard'?'active':''}" onclick="switchAdminTab('dashboard')">📊 Dashboard</button>
-      <button class="admin-sub-btn ${adminSubTab==='rates'?'active':''}" onclick="switchAdminTab('rates')">💷 Rates</button>
-    </div>
-    <div id="admin-content"></div>
-  `;
-  renderAdminContent();
-}
-
-function switchAdminTab(sub) {
-  adminSubTab = sub;
-  // Update buttons
-  document.querySelectorAll('.admin-sub-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', ['dashboard','rates'][i] === sub);
-  });
-  renderAdminContent();
-}
-
-function renderAdminContent() {
-  const container = document.getElementById('admin-content');
-  if (!container) return;
-  if (adminSubTab === 'dashboard') {
-    renderDashboard();
-    // Move dashboard content into admin-content
-    const dashEl = document.getElementById('tab-dashboard');
-    if (dashEl) container.innerHTML = dashEl.innerHTML;
-    else renderDashboardInto(container);
-  } else {
-    renderRatesInto(container);
-  }
-}
-
-function renderDashboardInto(container) {
-  const key = 'ecc_dashboard_quotes';
-  const allQuotes = JSON.parse(localStorage.getItem(key) || '[]');
-  const wonQuotes = allQuotes.filter(q => q.status === 'won');
-  const wonValue = wonQuotes.reduce((s,q) => s+q.total, 0);
-
-  let html = `
-    <div class="dash-summary-bar">
-      <div class="dash-summary-card"><div class="val">${allQuotes.length}</div><div class="lbl">Total Quotes</div></div>
-      <div class="dash-summary-card"><div class="val">${wonQuotes.length}</div><div class="lbl">Jobs Won</div></div>
-      <div class="dash-summary-card"><div class="val">${fmt(wonValue)}</div><div class="lbl">Won Value</div></div>
-    </div>`;
-
-  OPERATIVES.forEach(op => {
-    const opQuotes = allQuotes.filter(q => q.operative === op).sort((a,b) => b.savedAt - a.savedAt);
-    if (opQuotes.length === 0) return;
-    const opWon = opQuotes.filter(q => q.status === 'won');
-    const opTotal = opQuotes.reduce((s,q) => s+q.total, 0);
-
-    html += `<div class="dash-operative">
-      <div class="dash-op-header">
-        <span>${op}</span>
-        <div class="dash-op-stats">
-          <div class="dash-stat"><div class="dash-stat-val">${opQuotes.length}</div><div class="dash-stat-lbl">QUOTES</div></div>
-          <div class="dash-stat"><div class="dash-stat-val">${opWon.length}</div><div class="dash-stat-lbl">WON</div></div>
-          <div class="dash-stat"><div class="dash-stat-val">${fmt(opTotal)}</div><div class="dash-stat-lbl">VALUE</div></div>
-        </div>
-      </div>`;
-
-    opQuotes.forEach(q => {
-      html += `<div class="dash-quote-row">
-        <div class="dash-quote-info">
-          <div class="dash-quote-ref">${q.ref}</div>
-          <div class="dash-quote-detail">${q.customer}${q.address?' · '+q.address:''} · ${q.date}</div>
-        </div>
-        <div class="dash-quote-val">${fmt(q.total)}</div>
-        <button class="dash-tick-btn ${q.status==='won'?'won':''}" onclick="updateQuoteStatus('${q.ref}','won');renderAdminContent();" title="Job won">✅</button>
-        <button class="dash-tick-btn ${q.status==='lost'?'lost':''}" onclick="updateQuoteStatus('${q.ref}','lost');renderAdminContent();" title="Job lost">❌</button>
-      </div>`;
-    });
-    html += `</div>`;
-  });
-
-  if (allQuotes.length === 0) {
-    html += `<div class="dash-empty" style="margin-top:20px;">No quotes saved yet.<br>Complete a quote and tap Save to Dashboard.</div>`;
-  }
-  container.innerHTML = html;
-}
-
-function renderRatesInto(container) {
-  // Reuse existing renderRates but target our container
-  const tempDiv = document.getElementById('rates-container');
-  renderRates();
-  if (tempDiv) container.innerHTML = `<div id="rates-container">${tempDiv.innerHTML}</div>`;
-  else {
-    container.innerHTML = '<div id="rates-container"></div>';
-    renderRates();
-  }
-}
-
-// ── Dashboard ──────────────────────────────────────────────────────────────────
-const OPERATIVES = ['Sam Williams','Dean Blandford','Ben Pugh','Mick Lowe','Chris Shenton'];
-
-function saveQuoteToDashboard() {
-  const quotedBy = document.getElementById('quoted-by')?.value || '';
-  if (!quotedBy) return;
-  const { subtotal, afterDisc, vatAmt, total } = recalc();
-  const custName = document.getElementById('cust-name')?.value || 'Unknown Customer';
-  const custAddr = document.getElementById('cust-address')?.value || '';
-
-  const quote = {
-    ref: state.quoteRef,
-    date: state.today,
-    customer: custName,
-    address: custAddr,
-    total: total,
-    operative: quotedBy,
-    status: 'pending', // pending | won | lost
-    savedAt: Date.now(),
-  };
-
-  const key = 'ecc_dashboard_quotes';
-  const existing = JSON.parse(localStorage.getItem(key) || '[]');
-  // Avoid duplicate refs
-  const filtered = existing.filter(q => q.ref !== quote.ref);
-  filtered.push(quote);
-  localStorage.setItem(key, JSON.stringify(filtered));
-}
-
-function updateQuoteStatus(ref, status) {
-  const key = 'ecc_dashboard_quotes';
-  const quotes = JSON.parse(localStorage.getItem(key) || '[]');
-  const q = quotes.find(q => q.ref === ref);
-  if (q) {
-    q.status = q.status === status ? 'pending' : status;
-    localStorage.setItem(key, JSON.stringify(quotes));
-    renderDashboard();
-  }
-}
-
-function renderDashboard() {
-  const container = document.getElementById('tab-dashboard');
-  if (!container) return;
-
-  const key = 'ecc_dashboard_quotes';
-  const allQuotes = JSON.parse(localStorage.getItem(key) || '[]');
-
-  // Overall stats
-  const totalQuotes = allQuotes.length;
-  const wonQuotes = allQuotes.filter(q => q.status === 'won');
-  const totalValue = allQuotes.reduce((s,q) => s+q.total, 0);
-  const wonValue = wonQuotes.reduce((s,q) => s+q.total, 0);
-
-  let html = `
-    <div class="section-title">📊 Manager Dashboard</div>
-    <div class="dash-summary-bar">
-      <div class="dash-summary-card"><div class="val">${totalQuotes}</div><div class="lbl">Total Quotes</div></div>
-      <div class="dash-summary-card"><div class="val">${wonQuotes.length}</div><div class="lbl">Jobs Won</div></div>
-      <div class="dash-summary-card"><div class="val">${fmt(wonValue)}</div><div class="lbl">Won Value</div></div>
-    </div>`;
-
-  OPERATIVES.forEach(op => {
-    const opQuotes = allQuotes.filter(q => q.operative === op).sort((a,b) => b.savedAt - a.savedAt);
-    if (opQuotes.length === 0) return;
-    const opWon = opQuotes.filter(q => q.status === 'won');
-    const opTotal = opQuotes.reduce((s,q) => s+q.total, 0);
-
-    html += `<div class="dash-operative">
-      <div class="dash-op-header">
-        <span>${op}</span>
-        <div class="dash-op-stats">
-          <div class="dash-stat"><div class="dash-stat-val">${opQuotes.length}</div><div class="dash-stat-lbl">QUOTES</div></div>
-          <div class="dash-stat"><div class="dash-stat-val">${opWon.length}</div><div class="dash-stat-lbl">WON</div></div>
-          <div class="dash-stat"><div class="dash-stat-val">${fmt(opTotal)}</div><div class="dash-stat-lbl">VALUE</div></div>
-        </div>
-      </div>`;
-
-    if (opQuotes.length === 0) {
-      html += `<div class="dash-empty">No quotes yet</div>`;
-    } else {
-      opQuotes.forEach(q => {
-        const wonClass = q.status === 'won' ? 'won' : '';
-        const lostClass = q.status === 'lost' ? 'lost' : '';
-        html += `<div class="dash-quote-row">
-          <div class="dash-quote-info">
-            <div class="dash-quote-ref">${q.ref}</div>
-            <div class="dash-quote-detail">${q.customer}${q.address ? ' · '+q.address : ''} · ${q.date}</div>
-          </div>
-          <div class="dash-quote-val">${fmt(q.total)}</div>
-          <button class="dash-tick-btn ${wonClass}" onclick="updateQuoteStatus('${q.ref}','won')" title="Job won">✅</button>
-          <button class="dash-tick-btn ${lostClass}" onclick="updateQuoteStatus('${q.ref}','lost')" title="Job lost">❌</button>
-        </div>`;
-      });
-    }
-    html += `</div>`;
-  });
-
-  if (allQuotes.length === 0) {
-    html += `<div class="dash-empty" style="margin-top:20px;">No quotes saved yet.<br>Complete a quote and tap Save to Dashboard.</div>`;
-  }
-
-  container.innerHTML = html;
+  setTimeout(() => { printWin.print(); }, 600);
 }
 
 // ── Quote Numbering ────────────────────────────────────────────────────────────
