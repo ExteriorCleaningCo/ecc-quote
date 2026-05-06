@@ -925,36 +925,60 @@ function copyQuote() {
 
 
 // ── Postcode Lookup (postcodes.io — free, no key needed) ──────────────────────
+const GETADDRESS_KEY = 'zH1aG1G8vESi0GQXdIgKHA51872';
+
 async function lookupPostcode() {
   const pc = document.getElementById('postcode-input').value.trim().replace(/\s+/g,'').toUpperCase();
   const status = document.getElementById('postcode-status');
   const picker = document.getElementById('address-picker');
   if (!pc) { status.textContent = 'Please enter a postcode.'; status.style.display=''; return; }
-  status.textContent = 'Looking up...'; status.style.display='';
+  status.textContent = '🔍 Looking up...'; status.style.display='';
   picker.style.display='none';
+  picker.innerHTML = '<option value="">Select address...</option>';
+
   try {
-    const res = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc));
+    const res = await fetch(
+      'https://api.getaddress.io/find/' + encodeURIComponent(pc) + '?api-key=' + GETADDRESS_KEY + '&expand=true'
+    );
     const data = await res.json();
-    if (data.status === 200 && data.result) {
-      const r = data.result;
-      // Build a readable address from postcode data
-      const parts = [r.admin_ward, r.admin_district, r.parliamentary_constituency].filter(Boolean);
-      const area = parts[0] || r.region || '';
-      document.getElementById('cust-address').value = (area ? area + ', ' : '') + r.postcode;
-      status.textContent = '✅ Found: ' + r.postcode + (r.admin_district ? ' (' + r.admin_district + ')' : '');
-      // Try to get full street addresses if available
-      const res2 = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc) + '/validate');
-      // Just use what we have
+
+    if (data.addresses && data.addresses.length > 0) {
+      status.textContent = '✅ ' + data.addresses.length + ' addresses found';
+      picker.style.display = '';
+      picker.innerHTML = '<option value="">Select your address...</option>';
+
+      data.addresses.forEach(addr => {
+        // Build clean address string from expanded fields
+        const parts = [
+          addr.line_1,
+          addr.line_2,
+          addr.line_3,
+          addr.line_4,
+          addr.locality,
+          addr.town_or_city,
+          addr.county
+        ].filter(p => p && p.trim() !== '');
+        const fullAddr = parts.join(', ') + ', ' + pc;
+        const option = document.createElement('option');
+        option.value = fullAddr;
+        option.textContent = parts.slice(0,3).join(', ');
+        picker.appendChild(option);
+      });
+    } else if (data.Message) {
+      status.textContent = '❌ ' + data.Message;
     } else {
-      status.textContent = '❌ Postcode not found. Please enter address manually.';
+      status.textContent = '❌ No addresses found. Please enter manually.';
     }
   } catch(e) {
-    status.textContent = '⚠️ Offline — please enter address manually.';
+    status.textContent = '⚠️ Lookup failed — please enter address manually.';
   }
 }
 
 function selectAddress(val) {
-  if (val) document.getElementById('cust-address').value = val;
+  if (val) {
+    document.getElementById('cust-address').value = val;
+    document.getElementById('postcode-status').textContent = '✅ Address selected';
+  }
 }
 
 // Allow Enter key on postcode field
