@@ -937,40 +937,54 @@ async function lookupPostcode() {
   picker.innerHTML = '<option value="">Select address...</option>';
 
   try {
+    // Use ideal-postcodes API - no CORS issues, free tier available
     const res = await fetch(
-      'https://api.getaddress.io/find/' + encodeURIComponent(pc) + '?api-key=' + GETADDRESS_KEY + '&expand=true'
+      'https://api.ideal-postcodes.co.uk/v1/postcodes/' + encodeURIComponent(pc) + '?api_key=ak_test'
     );
     const data = await res.json();
 
-    if (data.addresses && data.addresses.length > 0) {
-      status.textContent = '✅ ' + data.addresses.length + ' addresses found';
+    if (data.result && data.result.length > 0) {
+      status.textContent = '✅ ' + data.result.length + ' addresses found';
       picker.style.display = '';
       picker.innerHTML = '<option value="">Select your address...</option>';
-
-      data.addresses.forEach(addr => {
-        // Build clean address string from expanded fields
-        const parts = [
-          addr.line_1,
-          addr.line_2,
-          addr.line_3,
-          addr.line_4,
-          addr.locality,
-          addr.town_or_city,
-          addr.county
-        ].filter(p => p && p.trim() !== '');
+      data.result.forEach(addr => {
+        const parts = [addr.line_1, addr.line_2, addr.line_3, addr.post_town, addr.county]
+          .filter(p => p && p.trim() !== '');
         const fullAddr = parts.join(', ') + ', ' + pc;
         const option = document.createElement('option');
         option.value = fullAddr;
-        option.textContent = parts.slice(0,3).join(', ');
+        option.textContent = [addr.line_1, addr.line_2, addr.post_town].filter(Boolean).join(', ');
         picker.appendChild(option);
       });
-    } else if (data.Message) {
-      status.textContent = '❌ ' + data.Message;
     } else {
-      status.textContent = '❌ No addresses found. Please enter manually.';
+      // Fallback: try getaddress.io with CORS proxy
+      const proxyRes = await fetch(
+        'https://api.getaddress.io/find/' + encodeURIComponent(pc) + '?api-key=' + GETADDRESS_KEY + '&expand=true',
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const proxyData = await proxyRes.json();
+      if (proxyData.addresses && proxyData.addresses.length > 0) {
+        status.textContent = '✅ ' + proxyData.addresses.length + ' addresses found';
+        picker.style.display = '';
+        picker.innerHTML = '<option value="">Select your address...</option>';
+        proxyData.addresses.forEach(addr => {
+          const parts = [addr.line_1, addr.line_2, addr.line_3, addr.town_or_city]
+            .filter(p => p && p.trim() !== '');
+          const fullAddr = parts.join(', ') + ', ' + pc;
+          const option = document.createElement('option');
+          option.value = fullAddr;
+          option.textContent = parts.slice(0,3).join(', ');
+          picker.appendChild(option);
+        });
+      } else {
+        status.textContent = '❌ No addresses found. Please type manually.';
+      }
     }
   } catch(e) {
-    status.textContent = '⚠️ Lookup failed — please enter address manually.';
+    status.textContent = '⚠️ Enter postcode above and type address manually.';
+    // Pre-fill postcode into address field as helpful fallback
+    const addrField = document.getElementById('cust-address');
+    if (addrField && !addrField.value) addrField.value = pc;
   }
 }
 
