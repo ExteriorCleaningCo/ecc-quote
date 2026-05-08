@@ -6,50 +6,29 @@ export default async function handler(req, res) {
   const { postcode } = req.query;
   if (!postcode) { res.status(400).json({ error: 'Postcode required' }); return; }
  
-  const clean = postcode.replace(/\s+/g,'').toUpperCase();
+  const clean = postcode.replace(/\s+/g, '').toUpperCase();
+  const formatted = clean.slice(0, -3) + ' ' + clean.slice(-3);
  
   try {
-    // Use postcodes.io to validate + get location, then use OS Places for addresses
-    const pcRes = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(clean));
-    const pcData = await pcRes.json();
+    const response = await fetch(
+      'https://api.ideal-postcodes.co.uk/v1/postcodes/' + encodeURIComponent(formatted) + '?api_key=ak_mowobf7dE7Lufy9K0U8bVsm2JXSON',
+      { headers: { 'Accept': 'application/json' } }
+    );
+    const data = await response.json();
  
-    if (pcData.status !== 200 || !pcData.result) {
-      res.status(200).json({ addresses: [], message: 'Postcode not found' });
-      return;
-    }
- 
-    // Use Royal Mail PAF via postcodes.io addresses endpoint
-    const addrRes = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(clean) + '/addresses');
-    const addrData = await addrRes.json();
- 
-    if (addrData.status === 200 && addrData.result && addrData.result.addresses) {
-      const addresses = addrData.result.addresses.map(a => ({
+    if (data.result && data.result.length > 0) {
+      const addresses = data.result.map(a => ({
         line_1: a.line_1 || '',
         line_2: a.line_2 || '',
         line_3: a.line_3 || '',
         line_4: '',
-        locality: a.locality || '',
-        town_or_city: a.town_or_city || pcData.result.admin_district || '',
-        county: a.county || pcData.result.admin_county || '',
+        locality: a.dependent_locality || '',
+        town_or_city: a.post_town || '',
+        county: a.county || '',
       }));
       res.status(200).json({ addresses });
     } else {
-      // Fallback: return area-level info so at least postcode fills in
-      const r = pcData.result;
-      const town = r.admin_district || r.parish || '';
-      const county = r.admin_county || r.region || '';
-      res.status(200).json({
-        addresses: [{
-          line_1: '',
-          line_2: '',
-          line_3: '',
-          line_4: '',
-          locality: '',
-          town_or_city: town,
-          county: county,
-        }],
-        fallback: true
-      });
+      res.status(200).json({ addresses: [], message: 'No addresses found for this postcode.' });
     }
   } catch (err) {
     res.status(500).json({ error: 'Lookup failed', detail: err.message });
