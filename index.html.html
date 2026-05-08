@@ -1539,6 +1539,142 @@ function saveAsPDF() {
   setTimeout(() => { printWin.print(); }, 600);
 }
 
+
+// ── Admin Tab ──────────────────────────────────────────────────────────────────
+const OPERATIVES = ['Sam Williams','Dean Blandford','Ben Pugh','Mick Lowe','Chris Shenton'];
+let adminSubTab = 'dashboard';
+
+function requestAdmin() {
+  if (pinUnlocked) { showTab('admin'); return; }
+  pinTarget = 'admin';
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+  document.getElementById('pin-sub').textContent = 'Enter your PIN to access Admin';
+  document.getElementById('pin-overlay').classList.remove('hidden');
+}
+
+function renderAdmin() {
+  const container = document.getElementById('tab-admin');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="section-title">⚙️ Admin</div>
+    <div id="admin-subtabs">
+      <button class="admin-sub-btn ${adminSubTab==='dashboard'?'active':''}" onclick="switchAdminTab('dashboard')">📊 Dashboard</button>
+      <button class="admin-sub-btn ${adminSubTab==='rates'?'active':''}" onclick="switchAdminTab('rates')">💷 Rates</button>
+    </div>
+    <div id="admin-content"></div>
+  `;
+  renderAdminContent();
+}
+
+function switchAdminTab(sub) {
+  adminSubTab = sub;
+  document.querySelectorAll('.admin-sub-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', ['dashboard','rates'][i] === sub);
+  });
+  renderAdminContent();
+}
+
+function renderAdminContent() {
+  const container = document.getElementById('admin-content');
+  if (!container) return;
+  if (adminSubTab === 'dashboard') {
+    renderDashboardInto(container);
+  } else {
+    renderRatesInto(container);
+  }
+}
+
+function saveQuoteToDashboard() {
+  const quotedBy = document.getElementById('quoted-by')?.value || '';
+  if (!quotedBy) { alert('Please select who is quoting first.'); return; }
+  const { subtotal, afterDisc, vatAmt, total } = recalc();
+  const custName = document.getElementById('cust-name')?.value || 'Unknown Customer';
+  const custAddr = document.getElementById('cust-address')?.value || '';
+  const quote = {
+    ref: state.quoteRef,
+    date: state.today,
+    customer: custName,
+    address: custAddr,
+    total: total,
+    operative: quotedBy,
+    status: 'pending',
+    savedAt: Date.now(),
+  };
+  const key = 'ecc_dashboard_quotes';
+  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  const filtered = existing.filter(q => q.ref !== quote.ref);
+  filtered.push(quote);
+  localStorage.setItem(key, JSON.stringify(filtered));
+}
+
+function updateQuoteStatus(ref, status) {
+  const key = 'ecc_dashboard_quotes';
+  const quotes = JSON.parse(localStorage.getItem(key) || '[]');
+  const q = quotes.find(q => q.ref === ref);
+  if (q) {
+    q.status = q.status === status ? 'pending' : status;
+    localStorage.setItem(key, JSON.stringify(quotes));
+    renderAdminContent();
+  }
+}
+
+function renderDashboardInto(container) {
+  const key = 'ecc_dashboard_quotes';
+  const allQuotes = JSON.parse(localStorage.getItem(key) || '[]');
+  const wonQuotes = allQuotes.filter(q => q.status === 'won');
+  const wonValue = wonQuotes.reduce((s,q) => s+q.total, 0);
+
+  let html = `
+    <div class="dash-summary-bar">
+      <div class="dash-summary-card"><div class="val">${allQuotes.length}</div><div class="lbl">Total Quotes</div></div>
+      <div class="dash-summary-card"><div class="val">${wonQuotes.length}</div><div class="lbl">Jobs Won</div></div>
+      <div class="dash-summary-card"><div class="val">${fmt(wonValue)}</div><div class="lbl">Won Value</div></div>
+    </div>`;
+
+  OPERATIVES.forEach(op => {
+    const opQuotes = allQuotes.filter(q => q.operative === op).sort((a,b) => b.savedAt - a.savedAt);
+    if (opQuotes.length === 0) return;
+    const opWon = opQuotes.filter(q => q.status === 'won');
+    const opTotal = opQuotes.reduce((s,q) => s+q.total, 0);
+
+    html += `<div class="dash-operative">
+      <div class="dash-op-header">
+        <span>${op}</span>
+        <div class="dash-op-stats">
+          <div class="dash-stat"><div class="dash-stat-val">${opQuotes.length}</div><div class="dash-stat-lbl">QUOTES</div></div>
+          <div class="dash-stat"><div class="dash-stat-val">${opWon.length}</div><div class="dash-stat-lbl">WON</div></div>
+          <div class="dash-stat"><div class="dash-stat-val">${fmt(opTotal)}</div><div class="dash-stat-lbl">VALUE</div></div>
+        </div>
+      </div>`;
+
+    opQuotes.forEach(q => {
+      html += `<div class="dash-quote-row">
+        <div class="dash-quote-info">
+          <div class="dash-quote-ref">${q.ref}</div>
+          <div class="dash-quote-detail">${q.customer}${q.address?' · '+q.address:''} · ${q.date}</div>
+        </div>
+        <div class="dash-quote-val">${fmt(q.total)}</div>
+        <button class="dash-tick-btn ${q.status==='won'?'won':''}" onclick="updateQuoteStatus('${q.ref}','won')" title="Job won">✅</button>
+        <button class="dash-tick-btn ${q.status==='lost'?'lost':''}" onclick="updateQuoteStatus('${q.ref}','lost')" title="Job lost">❌</button>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  if (allQuotes.length === 0) {
+    html += `<div class="dash-empty" style="margin-top:20px;">No quotes saved yet.<br>Complete a quote and tap Save to Dashboard.</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderRatesInto(container) {
+  container.innerHTML = '<div id="rates-container"></div>';
+  renderRates();
+}
+
+
 // ── Quote Numbering ────────────────────────────────────────────────────────────
 const OPERATIVE_CODES = {
   'Sam Williams':   'SW',
@@ -1639,9 +1775,7 @@ function pinKey(digit) {
       if (pinBuffer === CORRECT_PIN) {
         pinUnlocked = true;
         document.getElementById('pin-overlay').classList.add('hidden');
-        if (pinTarget === 'rates') { adminSubTab = 'rates'; showTab('admin'); }
-        else if (pinTarget === 'dashboard') { adminSubTab = 'dashboard'; showTab('admin'); }
-        else showTab(pinTarget);
+        showTab('admin');
       } else {
         document.getElementById('pin-error').textContent = 'Incorrect PIN. Try again.';
         pinBuffer = '';
