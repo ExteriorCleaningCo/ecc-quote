@@ -470,29 +470,35 @@ function newArea() {
   };
 }
 
+const MINIMUM_CHARGE = 75.00;
+const MINIMUM_CHARGE_CATS = ['driveways', 'patios', 'brickwork'];
+
 function getSubtotal(area) {
   const sub = rates[area.subId];
   if (!sub) return 0;
   // Skip header items
   const baseSub0 = getSub(area.catId, area.subId);
   if (baseSub0 && baseSub0.isHeader) return 0;
+  let calculated = 0;
   if (area.mode === 'm2') {
     const m2 = (area.measurements||[]).reduce((s,m)=>{
       const w=parseFloat(m.w)||0, l=parseFloat(m.l)||0; return s+(w*l);
     },0);
-    return m2 * (sub.m2 || 0);
+    calculated = m2 * (sub.m2 || 0);
   } else if (area.mode === 'flat') {
-    // For roofs with baseM2, flat = baseM2 × m2 rate (120m² average)
     const baseSub = getSub(area.catId, area.subId);
     if (baseSub && baseSub.baseM2) return baseSub.baseM2 * (sub.m2 || 0);
-    // For gutters and other fixed-price services, use the stored flat rate directly
     if (sub.flat && !area.flatPrice) return sub.flat;
     return parseFloat(area.flatPrice) || sub.flat || 0;
   } else if (area.mode === 'panel') {
     const panels = parseFloat(area.panels) || sub.avgPanels || 0;
-    return panels * (rates[area.subId]?.perPanel || sub.perPanel || 0);
+    calculated = panels * (rates[area.subId]?.perPanel || sub.perPanel || 0);
   }
-  return 0;
+  // Apply minimum charge for applicable categories
+  if (calculated > 0 && MINIMUM_CHARGE_CATS.includes(area.catId)) {
+    return Math.max(calculated, MINIMUM_CHARGE);
+  }
+  return calculated;
 }
 
 function getSub(catId, subId) {
