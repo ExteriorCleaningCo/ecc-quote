@@ -1670,8 +1670,75 @@ function renderDashboardInto(container) {
 }
 
 function renderRatesInto(container) {
-  container.innerHTML = '<div id="rates-container"></div>';
-  renderRates();
+  container.innerHTML = '';
+  const isGutterFn = (catId) => catId === 'gutters';
+  const isSolarFn = (catId) => catId === 'solar';
+  const isRoofFn = (catId) => catId === 'roofs';
+  const isBrickworkFn = (catId) => catId === 'brickwork';
+
+  container.innerHTML = '<p style="color:#888;font-size:12px;margin-bottom:16px;">Your default rates per surface. These apply to all quotes.</p>';
+
+  Object.entries(SERVICES).forEach(([catId, cat]) => {
+    const isGutter = isGutterFn(catId);
+    const isSolar = isSolarFn(catId);
+    const isRoof = isRoofFn(catId);
+    const isBrickwork = isBrickworkFn(catId);
+    const div = document.createElement('div');
+    div.className = 'rate-card';
+    div.innerHTML = `<div class="rate-card-title">${cat.icon} ${cat.label}</div>` +
+      cat.subs.map(sub => {
+        const r = rates[sub.id] || {};
+        if (isSolar) return `
+          <div class="rate-row">
+            <span class="rate-name">${sub.label}</span>
+            <div class="rate-inputs">
+              <span class="rate-prefix">£</span>
+              <input class="rate-input" type="number" inputmode="decimal" value="${(r.perPanel||0).toFixed(2)}" onchange="rates['${sub.id}'].perPanel=parseFloat(this.value)||0;recalc();">
+              <span class="rate-suffix">/panel</span>
+            </div>
+          </div>`;
+        if (isGutter) return `
+          <div class="rate-row">
+            <span class="rate-name">${sub.label}</span>
+            <div class="rate-inputs">
+              <span class="rate-prefix">£</span>
+              <input class="rate-input" type="number" inputmode="decimal" value="${(r.flat||sub.flat||0).toFixed(2)}" onchange="rates['${sub.id}'].flat=parseFloat(this.value)||0;recalc();">
+              <span class="rate-suffix">fixed</span>
+            </div>
+          </div>`;
+        if (isRoof) return `
+          <div class="rate-row">
+            <span class="rate-name">${sub.label} <span style="color:#aaa;font-size:11px;">(120m² avg)</span></span>
+            <div class="rate-inputs">
+              <span class="rate-prefix">£</span>
+              <input class="rate-input" type="number" inputmode="decimal" value="${(r.m2||0).toFixed(2)}" onchange="rates['${sub.id}'].m2=parseFloat(this.value)||0;recalc();">
+              <span class="rate-suffix">/m²</span>
+            </div>
+          </div>`;
+        if (isBrickwork) {
+          if (sub.isHeader) return `<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:#000;letter-spacing:1px;margin:10px 0 4px;text-transform:uppercase;">${sub.label}</div>`;
+          return `
+          <div class="rate-row">
+            <span class="rate-name">${sub.label} <span style="color:#aaa;font-size:11px;">(${sub.baseM2}m²)</span></span>
+            <div class="rate-inputs">
+              <span class="rate-prefix">£</span>
+              <input class="rate-input" type="number" inputmode="decimal" value="${(r.m2||0).toFixed(2)}" onchange="rates['${sub.id}'].m2=parseFloat(this.value)||0;recalc();">
+              <span class="rate-suffix">/m²</span>
+            </div>
+          </div>`;
+        }
+        return `
+          <div class="rate-row">
+            <span class="rate-name">${sub.label}</span>
+            <div class="rate-inputs">
+              <span class="rate-prefix">£</span>
+              <input class="rate-input" type="number" inputmode="decimal" value="${(r.m2||0).toFixed(2)}" onchange="rates['${sub.id}'].m2=parseFloat(this.value)||0;recalc();">
+              <span class="rate-suffix">/m²</span>
+            </div>
+          </div>`;
+      }).join('');
+    container.appendChild(div);
+  });
 }
 
 
