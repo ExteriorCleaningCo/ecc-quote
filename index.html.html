@@ -215,7 +215,6 @@
 </style>
 </head>
 <body>
-<input type="file" id="cam-input" accept="image/*" capture="environment">
 <div id="app">
 
   <!-- PIN OVERLAY -->
@@ -595,10 +594,6 @@ function buildAreaCard(area, idx) {
       oninput="state.areas.find(a=>a.id===${area.id}).name=this.value;"
       style="margin-bottom:12px;">
 
-    <button class="ai-camera-btn" onclick="openCamera(${area.id})">
-      📷 AI SURFACE RECOGNITION
-    </button>
-    <div class="ai-result-box" id="ai-result-${area.id}"></div>
     <label class="field-label">Service Category</label>
     <div class="cat-grid" style="margin-bottom:12px;">
       ${Object.entries(SERVICES).map(([cid, c]) => `
@@ -937,7 +932,6 @@ async function lookupPostcode() {
   picker.innerHTML = '<option value="">Select address...</option>';
 
   try {
-    // Call our Vercel serverless proxy — no CORS issues
     const res = await fetch('/api/lookup?postcode=' + encodeURIComponent(pc));
     const data = await res.json();
 
@@ -956,10 +950,14 @@ async function lookupPostcode() {
         option.textContent = [addr.line_1, addr.line_2, addr.town_or_city].filter(Boolean).join(', ');
         picker.appendChild(option);
       });
-    } else if (data.Message) {
-      status.textContent = '❌ ' + data.Message + '. Please type manually.';
+    } else if (data.fallback) {
+      // Valid postcode but no address list — fill in town at least
+      status.textContent = '⚠️ ' + (data.message || 'Please type address manually');
+      if (data.town) {
+        document.getElementById('cust-address').value = data.town + ', ' + (data.county||'') + ', ' + pc;
+      }
     } else {
-      status.textContent = '❌ No addresses found. Please type manually.';
+      status.textContent = '❌ ' + (data.message || 'No addresses found. Please type manually.');
     }
   } catch(e) {
     status.textContent = '⚠️ Lookup failed — please type address manually.';
