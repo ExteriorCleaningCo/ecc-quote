@@ -654,6 +654,15 @@ function buildAreaCard(area, idx) {
       <span class="subtotal-detail">${detailStr}</span>
       <span class="subtotal-val">${subtotal > 0 ? fmt(subtotal) : '—'}</span>
     </div>
+    <div class="photo-section">
+      <div class="photo-thumbs" id="thumbs-${area.id}">
+        ${buildPhotoThumbs(area)}
+      </div>
+      <input type="file" accept="image/*" capture="environment" class="photo-input" id="photo-input-${area.id}" multiple onchange="handlePhotos(${area.id}, this)">
+      <button class="photo-add-btn" onclick="document.getElementById('photo-input-${area.id}').click()">
+        📷 ADD PHOTO
+      </button>
+    </div>
   `;
   return div;
 }
