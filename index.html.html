@@ -210,6 +210,15 @@
   .admin-sub-btn{flex:1;padding:10px 0;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:#fff;color:#555;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;transition:all 0.15s;}
   .admin-sub-btn.active{background:#000;border-color:#000;color:#fff;}
   #admin-content{min-height:200px;}
+
+  /* Photo attachments */
+  .photo-section{margin-top:10px;}
+  .photo-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+  .photo-thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.12);}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;}
+  .photo-thumb .del-photo{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;font-size:11px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;}
+  .photo-add-btn{display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1.5px dashed rgba(0,0,0,0.2);background:transparent;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;cursor:pointer;}
+  .photo-input{display:none;}
   /* Notes textarea */
   .mt14{margin-top:14px;}
 </style>
@@ -457,6 +466,7 @@ function newArea() {
     measurements: [{w:'',l:''}],
     flatPrice: '',
     panels: '',
+    photos: [],
   };
 }
 
@@ -1255,6 +1265,46 @@ function autoSetSolarSub(areaId, numPanels) {
   else area.subId = 'solar11';
   area.panels = String(numPanels);
   updateSubtotalDisplay(area);
+}
+
+
+// ── Photo Attachments ──────────────────────────────────────────────────────────
+function buildPhotoThumbs(area) {
+  if (!area.photos || area.photos.length === 0) return '';
+  return area.photos.map((src, i) => `
+    <div class="photo-thumb">
+      <img src="${src}" alt="Photo ${i+1}">
+      <button class="del-photo" onclick="deletePhoto(${area.id}, ${i})">×</button>
+    </div>
+  `).join('');
+}
+
+function handlePhotos(areaId, input) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  if (!area.photos) area.photos = [];
+  const files = Array.from(input.files);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      area.photos.push(e.target.result);
+      loaded++;
+      // Update thumbs without full re-render to keep keyboard/focus
+      const thumbsEl = document.getElementById('thumbs-' + areaId);
+      if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function deletePhoto(areaId, photoIdx) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area || !area.photos) return;
+  area.photos.splice(photoIdx, 1);
+  const thumbsEl = document.getElementById('thumbs-' + areaId);
+  if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
 }
 
 // ── Measurement rows ───────────────────────────────────────────────────────────
