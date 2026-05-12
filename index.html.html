@@ -229,6 +229,11 @@
   .print-modal-print{background:#fff;color:#000;}
   #print-modal-content{padding:20px;max-width:700px;margin:0 auto;}
   @media print{#print-modal-bar{display:none!important;}}
+
+  @media print {
+    #quote-overlay > div:first-child { display: none !important; }
+    body > *:not(#quote-overlay) { display: none !important; }
+  }
   /* Notes textarea */
   .mt14{margin-top:14px;}
 </style>
@@ -1768,16 +1773,54 @@ function showPrintPreview() {
 }
 
 function openPrintModal(printHTML) {
-  // Save to sessionStorage
-  sessionStorage.setItem('ecc_print_html', printHTML);
-  // Open preview page in new tab
-  const a = document.createElement('a');
-  a.href = '/preview';
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  // Build a full-screen overlay directly in the current page
+  // No popups, no new tabs - works 100% on iPhone and iPad
+  let overlay = document.getElementById('quote-overlay');
+  if (overlay) overlay.remove();
+  
+  overlay = document.createElement('div');
+  overlay.id = 'quote-overlay';
+  overlay.style.cssText = [
+    'position:fixed',
+    'top:0','left:0','right:0','bottom:0',
+    'z-index:99999',
+    'background:#fff',
+    'overflow-y:auto',
+    '-webkit-overflow-scrolling:touch',
+    'display:block'
+  ].join(';');
+
+  // Toolbar
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'position:sticky;top:0;background:#000;padding:14px 16px;display:flex;gap:10px;z-index:100000;';
+  toolbar.innerHTML = `
+    <button onclick="document.getElementById('quote-overlay').remove()" 
+      style="flex:1;padding:13px;border-radius:10px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer;">
+      ✕ CLOSE
+    </button>
+    <button onclick="window.print()" 
+      style="flex:2;padding:13px;border-radius:10px;border:none;background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer;">
+      🖨️ PRINT / SHARE PDF
+    </button>
+  `;
+
+  // Content
+  const contentDiv = document.createElement('div');
+  contentDiv.style.cssText = 'padding:20px;max-width:700px;margin:0 auto;';
+  
+  // Parse printHTML and inject just the body content + styles
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(printHTML, 'text/html');
+  const styleContent = Array.from(doc.querySelectorAll('style')).map(s => s.textContent).join('\n');
+  const styleEl = document.createElement('style');
+  styleEl.textContent = styleContent;
+  contentDiv.appendChild(styleEl);
+  contentDiv.innerHTML += doc.body.innerHTML;
+
+  overlay.appendChild(toolbar);
+  overlay.appendChild(contentDiv);
+  document.body.appendChild(overlay);
+  overlay.scrollTop = 0;
 }
 
 
