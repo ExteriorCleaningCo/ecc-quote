@@ -1,8 +1,81 @@
-{
-  "rewrites": [
-    {
-      "source": "/preview",
-      "destination": "/preview.html"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Quote Preview — Exterior Cleaning Co</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; background: #f4f4f4; }
+  #toolbar {
+    position: sticky; top: 0; z-index: 100;
+    background: #000; padding: 12px 16px;
+    display: flex; gap: 10px; align-items: center;
+    -webkit-print-color-adjust: exact;
+  }
+  #toolbar button {
+    flex: 1; padding: 13px 10px;
+    border-radius: 10px; border: none; cursor: pointer;
+    font-family: 'Arial', sans-serif; font-weight: 700;
+    font-size: 15px; letter-spacing: 0.5px;
+  }
+  .btn-back { background: rgba(255,255,255,0.15); color: #fff; }
+  .btn-print { background: #fff; color: #000; }
+  #quote-content {
+    max-width: 750px; margin: 0 auto;
+    background: #fff; padding: 20px;
+    min-height: 100vh;
+  }
+  #loading {
+    text-align: center; padding: 60px 20px;
+    font-family: Arial, sans-serif; color: #888;
+    font-size: 16px;
+  }
+  @media print {
+    #toolbar { display: none !important; }
+    body { background: #fff; }
+    #quote-content { padding: 0; margin: 0; max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+ 
+<div id="toolbar">
+  <button class="btn-back" onclick="window.close()">← Back</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Save / Share as PDF</button>
+</div>
+ 
+<div id="quote-content">
+  <div id="loading">Loading your quote...</div>
+</div>
+ 
+<script>
+  // Read quote HTML from sessionStorage
+  window.addEventListener('load', function() {
+    try {
+      const html = sessionStorage.getItem('ecc_print_html');
+      if (html) {
+        // Extract just the body content from the full HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        // Get styles and body content
+        const styles = Array.from(doc.querySelectorAll('style')).map(s => s.outerHTML).join('');
+        const body = doc.body.innerHTML;
+        document.getElementById('quote-content').innerHTML = styles + body;
+        document.getElementById('loading').style.display = 'none';
+        // Set page title to quote ref if available
+        const refEl = doc.querySelector('h2');
+        if (refEl) document.title = refEl.textContent + ' — Exterior Cleaning Co';
+      } else {
+        document.getElementById('loading').innerHTML = 
+          '<p>Quote not found.</p><p style="margin-top:10px;font-size:13px;color:#aaa;">Please go back and tap View & Print Quote again.</p>';
+      }
+    } catch(e) {
+      document.getElementById('loading').innerHTML = 'Error loading quote. Please try again.';
     }
-  ]
-}
+  });
+</script>
+</body>
+</html>
+ 
