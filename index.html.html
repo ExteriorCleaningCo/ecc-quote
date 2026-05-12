@@ -879,7 +879,7 @@ function renderSummary() {
 
     <div class="quote-ref-line">${state.quoteRef} · ${state.today}</div>
     <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Quote saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
-    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(255,60,60,0.3);background:rgba(255,60,60,0.06);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;" onclick="resetQuote()">🔄 START NEW QUOTE</button>
+    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(255,60,60,0.3);background:rgba(255,60,60,0.06);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">🔄 START NEW QUOTE</button>
     <button id="copy-btn" onclick="copyQuote()" style="margin-bottom:10px;">📋 COPY QUOTE TO CLIPBOARD</button>
     <button onclick="showPrintPreview()" style="width:100%;padding:16px;border-radius:14px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">🖨️ VIEW & PRINT QUOTE</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
@@ -892,6 +892,10 @@ function renderSummary() {
       <input id="email-to-field" placeholder="Customer email address" type="email" style="margin-bottom:8px;">
       <button onclick="tryMailto()" style="width:100%;padding:11px;border-radius:10px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 OPEN MAIL APP</button>
     </div>
+  
+    <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">SAVE TO DASHBOARD</button>
+    <button onclick="showPrintPreview()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#000;color:#fff;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">VIEW & PRINT QUOTE</button>
+    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid red;background:rgba(255,0,0,0.05);color:red;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">START NEW QUOTE</button>
   `;
   document.getElementById('summary-content').innerHTML = html;
 }
