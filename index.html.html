@@ -879,9 +879,9 @@ function renderSummary() {
 
     <div class="quote-ref-line">${state.quoteRef} · ${state.today}</div>
     <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Quote saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
-    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(255,60,60,0.3);background:rgba(255,60,60,0.06);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">🔄 START NEW QUOTE</button>
+    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(255,60,60,0.3);background:rgba(255,60,60,0.06);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;" onclick="resetQuote()">🔄 START NEW QUOTE</button>
     <button id="copy-btn" onclick="copyQuote()" style="margin-bottom:10px;">📋 COPY QUOTE TO CLIPBOARD</button>
-    <button onclick="saveAsPDF();" style="width:100%;padding:16px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">🖨️ SAVE / SHARE AS PDF</button>
+    <button onclick="showPrintPreview()" style="width:100%;padding:16px;border-radius:14px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">🖨️ VIEW & PRINT QUOTE</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
       <button onclick="lockQuoteRef();emailQuote('self');" style="padding:14px;border-radius:12px;border:1.5px solid #000000;background:#000000;color:#ffffff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
       <button onclick="lockQuoteRef();emailQuote('customer');" style="padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.04);color:#333;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
@@ -1763,6 +1763,21 @@ function renderRatesInto(container) {
 }
 
 
+
+// ── Print Preview ──────────────────────────────────────────────────────────────
+function showPrintPreview() {
+  saveAsPDF();
+}
+
+function openPrintModal(content) {
+  const modal = document.getElementById('print-modal');
+  const mc = document.getElementById('print-modal-content');
+  if (!modal || !mc) { alert('Preview unavailable. Try the Copy button instead.'); return; }
+  mc.innerHTML = content;
+  modal.style.display = 'block';
+  modal.scrollTop = 0;
+}
+
 // ── Quote Numbering ────────────────────────────────────────────────────────────
 const OPERATIVE_CODES = {
   'Sam Williams':   'SW',
@@ -1918,6 +1933,15 @@ if (localStorage.getItem('ecc_counter_version') !== COUNTER_VERSION) {
 const qmetaEl = document.getElementById('qmeta');
 if (qmetaEl) qmetaEl.textContent = 'Select operative above · ' + state.today;
 addArea(); // start with one area
+
 </script>
+<!-- Print Preview Modal -->
+<div id="print-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="position:sticky;top:0;background:#000;padding:12px 16px;display:flex;gap:8px;z-index:201;">
+    <button onclick="document.getElementById('print-modal').style.display='none'" style="flex:1;padding:11px;border-radius:8px;border:none;background:rgba(255,255,255,0.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">✕ CLOSE</button>
+    <button onclick="window.print()" style="flex:2;padding:11px;border-radius:8px;border:none;background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">🖨️ PRINT / SAVE AS PDF</button>
+  </div>
+  <div id="print-modal-content" style="padding:20px;max-width:700px;margin:0 auto;font-family:Arial,sans-serif;"></div>
+</div>
 </body>
 </html>
