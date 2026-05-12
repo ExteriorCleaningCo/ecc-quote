@@ -1039,367 +1039,65 @@ function setDiscount(pct) {
 function buildQuoteText() {
   const { subtotal, afterDisc, vatAmt, total } = recalc();
   const disc = activeDiscPct > 0 ? subtotal * (activeDiscPct/100) : 0;
-  const notes = document.getElementById('notes')?.value||'';
   const custName = document.getElementById('cust-name')?.value||'Customer';
   const custAddr = document.getElementById('cust-address')?.value||'';
   const custPhone = document.getElementById('cust-phone')?.value||'';
   const custEmail = document.getElementById('cust-email')?.value||'';
   const quotedBy = document.getElementById('quoted-by')?.value||'';
+  const notes = document.getElementById('notes')?.value||'';
+
+  // Keep body SHORT for iOS mailto compatibility (under 1800 chars)
+  const areaLines = state.areas.map((area,i) => {
+    const sub = getSub(area.catId, area.subId);
+    const st = getSubtotal(area);
+    const measRows = (area.measurements||[]).filter(m=>parseFloat(m.w)&&parseFloat(m.l));
+    const m2 = measRows.reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
+    const detail = area.mode==='m2' ? m2.toFixed(1)+'m2' : area.mode==='panel' ? (area.panels||'?')+' panels' : 'Fixed';
+    return (area.name||'Area '+(i+1))+' - '+(sub?.label||'')+' ('+detail+') = '+fmt(st);
+  }).join('\n');
 
   const lines = [
     'EXTERIOR CLEANING CO - QUOTE',
-    '-----------------------------------',
-    'Ref:   ' + state.quoteRef,
-    quotedBy ? 'Quoted by: ' + quotedBy : null,
-    'Date:  ' + state.today,
+    'Ref: '+state.quoteRef+' | Date: '+state.today,
+    quotedBy ? 'Quoted by: '+quotedBy : null,
     '',
-    'CUSTOMER',
-    custName,
+    'CUSTOMER: '+custName,
     custAddr,
     custPhone,
-    custEmail,
     '',
-    'AREAS',
-    ...state.areas.map((area, i) => {
-      const cat = SERVICES[area.catId];
-      const sub = getSub(area.catId, area.subId);
-      const st = getSubtotal(area);
-      const panels = parseFloat(area.panels)||(sub?.avgPanels||0);
-      let detail = '';
-      if (area.mode === 'm2') {
-        const measRows = (area.measurements||[]).filter(m=>parseFloat(m.w)&&parseFloat(m.l));
-        const totalM2e = measRows.reduce((s,m)=>s+(parseFloat(m.w)||0)*(parseFloat(m.l)||0),0);
-        const rowDetail = measRows.map((m,ri)=>`  Row ${ri+1}: ${m.w}m x ${m.l}m = ${((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(1)}m2`).join('\n');
-        detail = totalM2e.toFixed(1)+'m2 @ '+fmt(rates[area.subId]?.m2||0)+'/m2\n'+rowDetail;
-      } else if (area.mode === 'panel') {
-        detail = panels+' panels @ '+fmt(rates[area.subId]?.perPanel||0)+'/panel';
-      } else {
-        const baseSub = getSub(area.catId, area.subId);
-        detail = baseSub && baseSub.baseM2 ? baseSub.baseM2+'m2 avg' : 'Fixed rate';
-      }
-      return (area.name||'Area '+(i+1))+' ('+( sub?.label||'')+') - '+detail+' = '+fmt(st);
-    }),
+    'AREAS:',
+    areaLines,
     '',
-    'Ex VAT:    ' + fmt(afterDisc),
-    state.vatOn ? 'VAT (20%): ' + fmt(vatAmt) : null,
-    disc > 0 ? 'Discount ('+activeDiscPct+'%): -'+fmt(disc) : null,
-    'TOTAL INC: ' + fmt(total),
-    notes ? 'Notes: '+notes : null,
+    'Ex VAT: '+fmt(afterDisc),
+    state.vatOn ? 'VAT 20%: '+fmt(vatAmt) : null,
+    disc>0 ? 'Discount: -'+fmt(disc) : null,
+    'TOTAL: '+fmt(total),
+    notes ? '\nNotes: '+notes : null,
     '',
-    '-----------------------------------',
     'Exterior Cleaning Co',
-    'Unit 10B, Moston Road, Sandbach, CW11 3HL',
     'Tel: 01270 447960 / 07798885884',
-    'Email: info@exteriorcleaningco.com',
-    'Website: www.exteriorcleaningco.com',
-    '-----------------------------------',
-  ].filter(x => x !== null && x !== undefined).join('\n');
+    'info@exteriorcleaningco.com',
+    'www.exteriorcleaningco.com',
+  ].filter(x=>x!==null&&x!==undefined).join('\n');
 
-  return { lines, custName, custEmail: document.getElementById('cust-email')?.value||'' };
+  return { lines, custName, custEmail };
 }
 
 function emailQuote(target) {
   const { lines, custName, custEmail } = buildQuoteText();
-
-  // Copy to clipboard first
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(lines).catch(() => {});
-  } else {
-    const ta = document.createElement('textarea');
-    ta.value = lines;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try { document.execCommand('copy'); } catch(e) {}
-    document.body.removeChild(ta);
-  }
-
-  // Try mailto
-  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || 'info@exteriorcleaningco.com');
-  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
-  const bodyEnc = encodeURIComponent(lines);
-  const mailtoLink = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
-
-  // Try opening mail app
-  const a = document.createElement('a');
-  a.href = mailtoLink;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  // Show fallback after short delay in case mail didn't open
-  setTimeout(() => {
-    const fb = document.getElementById('email-fallback');
-    if (fb) {
-      fb.style.display = 'block';
-      if (target === 'customer' && custEmail) {
-        document.getElementById('email-to-field').value = custEmail;
-      }
-    }
-  }, 1500);
+  const toAddr = target === 'self' ? 'info@exteriorcleaningco.com' : (custEmail || '');
+  const subject = 'ECC Quote '+state.quoteRef+' - '+custName;
+  
+  // Use location.href - most reliable on iOS
+  window.location.href = 'mailto:'+encodeURIComponent(toAddr)
+    +'?subject='+encodeURIComponent(subject)
+    +'&body='+encodeURIComponent(lines);
 }
 
-let storedQuoteLines = '';
 function tryMailto() {
-  const { lines, custName } = buildQuoteText();
-  const toAddr = document.getElementById('email-to-field')?.value || '';
-  const subject = encodeURIComponent('Exterior Cleaning Co - Quote ' + state.quoteRef + ' for ' + custName);
-  const bodyEnc = encodeURIComponent(lines);
-  window.location.href = 'mailto:' + toAddr + '?subject=' + subject + '&body=' + bodyEnc;
+  emailQuote('customer');
 }
 
-// ── AI Surface Recognition ────────────────────────────────────────────────────
-let currentCamAreaId = null;
-
-function openCamera(areaId) {
-  currentCamAreaId = areaId;
-  const input = document.getElementById('cam-input');
-  input.value = '';
-  input.onchange = () => handlePhoto(input.files[0]);
-  input.click();
-}
-
-async function handlePhoto(file) {
-  if (!file || !currentCamAreaId) return;
-  const areaId = currentCamAreaId;
-  const resultBox = document.getElementById('ai-result-' + areaId);
-  if (!resultBox) return;
-
-  // Show loading
-  resultBox.className = 'ai-result-box visible';
-  resultBox.innerHTML = '<span class="ai-spinner"></span> Analysing surface...';
-
-  // Convert image to base64
-  const base64 = await new Promise((res, rej) => {
-    const reader = new FileReader();
-    reader.onload = () => res(reader.result.split(',')[1]);
-    reader.onerror = rej;
-    reader.readAsDataURL(file);
-  });
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 }
-            },
-            {
-              type: 'text',
-              text: `You are a surface analysis assistant for a professional exterior cleaning company. Analyse this image and respond ONLY with a JSON object, no other text, in this exact format:
-{
-  "surface": "exact surface type from this list only: Block Paving, Tarmac, Concrete, Porcelain, Indian Stone, Concrete Slabs, Brickwork, Render, Roof, Bungalow, Solar Panels, Gutters, Paths / Walkways",
-  "category": "exact category from this list only: driveways, patios, brickwork, roofs, solar, gutters",
-  "subId": "exact sub ID from this list only: blockpaving, tarmac, concrete, porcelain, indianstone, patiobp, concslabs, bw_2bed_semi, rn_2bed_semi, roof2s, bungalow, solar15, g_sd2, path",
-  "confidence": "High, Medium or Low",
-  "notes": "one sentence about what you can see and any cleaning recommendation"
-}`
-            }
-          ]
-        }]
-      })
-    });
-
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-
-    const text = data.content?.map(c => c.text || '').join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(clean);
-
-    // Apply to area
-    const area = state.areas.find(a => a.id === areaId);
-    if (area && result.category && result.subId) {
-      area.catId = result.category;
-      // Validate subId exists
-      const validSub = getSub(result.category, result.subId);
-      if (validSub) area.subId = result.subId;
-      else {
-        const firstReal = SERVICES[result.category]?.subs.find(s => !s.isHeader);
-        if (firstReal) area.subId = firstReal.id;
-      }
-      // Set mode
-      const _isGutter = result.category === 'gutters';
-      const _isSolar = result.category === 'solar';
-      const _isRoof = result.category === 'roofs';
-      const _isBrickwork = result.category === 'brickwork';
-      area.mode = _isSolar ? 'panel' : (_isGutter || _isRoof || _isBrickwork) ? 'flat' : 'm2';
-    }
-
-    // Show result
-    const conf = result.confidence === 'High' ? '🟢' : result.confidence === 'Medium' ? '🟡' : '🔴';
-    resultBox.innerHTML = `
-      <strong>Surface detected: ${result.surface}</strong> ${conf} ${result.confidence}<br>
-      <span style="color:#555;">${result.notes}</span><br>
-      <span style="color:#888;font-size:11px;">Category auto-selected below — please verify before quoting.</span>
-    `;
-
-    // Re-render to show updated category
-    renderAreas();
-
-    // Restore result box (renderAreas wipes it)
-    setTimeout(() => {
-      const rb = document.getElementById('ai-result-' + areaId);
-      if (rb) {
-        rb.className = 'ai-result-box visible';
-        rb.innerHTML = `
-          <strong>Surface detected: ${result.surface}</strong> ${conf} ${result.confidence}<br>
-          <span style="color:#555;">${result.notes}</span><br>
-          <span style="color:#888;font-size:11px;">Category auto-selected below — please verify before quoting.</span>
-        `;
-      }
-    }, 50);
-
-  } catch (err) {
-    resultBox.innerHTML = `⚠️ Could not analyse image. Please select surface manually.<br><span style="color:#aaa;font-size:11px;">${err.message || 'Check internet connection.'}</span>`;
-  }
-}
-
-
-// ── Solar panel dropdown options ───────────────────────────────────────────────
-function getPanelOptions(subId, selected) {
-  const ranges = {
-    'solar15':  [1,2,3,4,5],
-    'solar610': [6,7,8,9,10],
-    'solar11':  [11,12,13,14,15,16,17,18,19,20],
-  };
-  const nums = ranges[subId] || [];
-  if (!nums.length) return '<option value="">Select range first...</option>';
-  return nums.map(n => `<option value="${n}" ${String(selected)===String(n)?'selected':''}>${n} panel${n>1?'s':''}</option>`).join('');
-}
-
-function setSolarBracket(areaId, subId) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area) return;
-  area.subId = subId;
-  area.panels = '';
-}
-
-function autoSetSolarSub(areaId, numPanels) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area) return;
-  const n = parseInt(numPanels);
-  if (n <= 5) area.subId = 'solar15';
-  else if (n <= 10) area.subId = 'solar610';
-  else area.subId = 'solar11';
-  area.panels = String(numPanels);
-  updateSubtotalDisplay(area);
-}
-
-
-// ── Photo Attachments ──────────────────────────────────────────────────────────
-function buildPhotoThumbs(area) {
-  if (!area.photos || area.photos.length === 0) return '';
-  return area.photos.map((src, i) => `
-    <div class="photo-thumb">
-      <img src="${src}" alt="Photo ${i+1}">
-      <button class="del-photo" onclick="deletePhoto(${area.id}, ${i})">×</button>
-    </div>
-  `).join('');
-}
-
-function handlePhotos(areaId, input) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area) return;
-  if (!area.photos) area.photos = [];
-  const files = Array.from(input.files);
-  let loaded = 0;
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      area.photos.push(e.target.result);
-      loaded++;
-      // Update thumbs without full re-render to keep keyboard/focus
-      const thumbsEl = document.getElementById('thumbs-' + areaId);
-      if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
-    };
-    reader.readAsDataURL(file);
-  });
-  input.value = '';
-}
-
-function deletePhoto(areaId, photoIdx) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area || !area.photos) return;
-  area.photos.splice(photoIdx, 1);
-  const thumbsEl = document.getElementById('thumbs-' + areaId);
-  if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
-}
-
-// ── Measurement rows ───────────────────────────────────────────────────────────
-function buildMeasRows(area) {
-  const ms = area.measurements || [];
-  return ms.map((m, i) => {
-    const hasVal = m.w !== '' || m.l !== '';
-    // Show row header only for first row
-    const rowLabel = i === 0 ? '' : `<div style="font-size:10px;color:#aaa;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;margin-top:8px;margin-bottom:2px;">AREA ${i+1}</div>`;
-    return `${rowLabel}<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:6px;align-items:center;">
-      <input type="number" inputmode="decimal" placeholder="Width" value="${m.w}"
-        id="mw-${area.id}-${i}"
-        style="margin-bottom:0;"
-        oninput="updateMeas(${area.id},${i},'w',this.value)"
-        onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();const el=document.getElementById('ml-${area.id}-${i}');if(el)el.focus();}">
-      <input type="number" inputmode="decimal" placeholder="Length" value="${m.l}"
-        id="ml-${area.id}-${i}"
-        style="margin-bottom:0;"
-        oninput="updateMeas(${area.id},${i},'l',this.value)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();const next=document.getElementById('mw-${area.id}-${i+1}');if(next){next.focus();}else{this.blur();}}">
-      <button onclick="removeMeasRow(${area.id},${i})" style="padding:10px 10px;border-radius:8px;border:1px solid rgba(255,60,60,0.25);background:rgba(255,60,60,0.08);color:#e05555;font-size:13px;white-space:nowrap;${i===0?'visibility:hidden;':''}">&times;</button>
-    </div>
-    <div style="font-size:11px;color:#aaa;text-align:right;margin-bottom:4px;margin-top:-2px;">${(parseFloat(m.w)||0)*(parseFloat(m.l)||0)>0?((parseFloat(m.w)||0)*(parseFloat(m.l)||0)).toFixed(1)+' m²':''}</div>`;
-  }).join('');
-}
-
-function updateMeas(areaId, idx, field, val) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area) return;
-  area.measurements[idx][field] = val;
-  // Update just the m² hint for this row
-  const w = parseFloat(area.measurements[idx].w)||0;
-  const l = parseFloat(area.measurements[idx].l)||0;
-  // Refresh meas wrap without losing focus
-  const wrap = document.getElementById('meas-wrap-' + areaId);
-  const focused = document.activeElement?.id;
-  if (wrap) wrap.innerHTML = buildMeasRows(area);
-  if (focused) { const el = document.getElementById(focused); if(el) el.focus(); }
-  updateSubtotalDisplay(area);
-}
-
-function addMeasRow(areaId) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area) return;
-  area.measurements.push({w:'',l:''});
-  const wrap = document.getElementById('meas-wrap-' + areaId);
-  if (wrap) wrap.innerHTML = buildMeasRows(area);
-  // Focus new width input
-  const newIdx = area.measurements.length - 1;
-  setTimeout(() => {
-    const el = document.getElementById('mw-' + areaId + '-' + newIdx);
-    if (el) el.focus();
-  }, 50);
-}
-
-function removeMeasRow(areaId, idx) {
-  const area = state.areas.find(a => a.id === areaId);
-  if (!area || area.measurements.length <= 1) return;
-  area.measurements.splice(idx, 1);
-  const wrap = document.getElementById('meas-wrap-' + areaId);
-  if (wrap) wrap.innerHTML = buildMeasRows(area);
-  updateSubtotalDisplay(area);
-}
-
-
-
-// ── Save as PDF ────────────────────────────────────────────────────────────────
 function saveAsPDF() {
   lockQuoteRef();
   const { subtotal, afterDisc, vatAmt, total } = recalc();
@@ -1976,7 +1674,7 @@ const _origShowTab = showTab;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 // Reset all quote counters to start from 001
-const COUNTER_VERSION = 'v5';
+const COUNTER_VERSION = 'v6';
 if (localStorage.getItem('ecc_counter_version') !== COUNTER_VERSION) {
   // Clear all counters and test quotes
   Object.keys(localStorage).filter(k => k.startsWith('ecc_quote_num_') || k === 'ecc_dashboard_quotes').forEach(k => {
