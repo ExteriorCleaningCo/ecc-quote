@@ -881,9 +881,14 @@ function renderSummary() {
 
 
   
-    <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">SAVE TO DASHBOARD</button>
-    <button onclick="showPrintPreview()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#000;color:#fff;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">VIEW & PRINT QUOTE</button>
-    <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid red;background:rgba(255,0,0,0.05);color:red;font-family:sans-serif;font-weight:800;font-size:14px;margin-bottom:10px;">START NEW QUOTE</button>
+    <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
+    <button onclick="showPrintPreview()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">🖨️ VIEW & SHARE QUOTE</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <button onclick="lockQuoteRef();emailQuote('self');" style="padding:13px;border-radius:12px;border:1.5px solid #000;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
+      <button onclick="lockQuoteRef();emailQuote('customer');" style="padding:13px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
+    </div>
+    <button onclick="copyQuote()" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;margin-bottom:10px;">📋 COPY TO CLIPBOARD</button>
+    <button onclick="resetQuote()" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid rgba(255,0,0,0.3);background:rgba(255,0,0,0.04);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">🔄 START NEW QUOTE</button>
   `;
   document.getElementById('summary-content').innerHTML = html;
 }
@@ -1758,30 +1763,21 @@ function renderRatesInto(container) {
 
 // ── Print Preview ──────────────────────────────────────────────────────────────
 function showPrintPreview() {
+  lockQuoteRef();
   saveAsPDF();
 }
 
 function openPrintModal(printHTML) {
-  // Store the HTML in sessionStorage then open the preview page
-  // The /preview page reads it and displays it — works perfectly on iOS Safari
-  try {
-    sessionStorage.setItem('ecc_print_html', printHTML);
-    window.open('/preview', '_blank');
-  } catch(e) {
-    // Fallback: post to a form
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/api/preview';
-    form.target = '_blank';
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'html';
-    input.value = printHTML;
-    form.appendChild(input);
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-  }
+  // Save to sessionStorage
+  sessionStorage.setItem('ecc_print_html', printHTML);
+  // Open preview page in new tab
+  const a = document.createElement('a');
+  a.href = '/preview';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 
