@@ -878,7 +878,7 @@ function renderSummary() {
     ${notes?`<div class="card-flat" style="margin-bottom:16px;"><div class="summary-label">NOTES</div><div style="color:#555;font-size:13px;line-height:1.6;">${notes}</div></div>`:''}
 
     <div class="quote-ref-line">${state.quoteRef} · ${state.today}</div>
-    <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Quote saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
+
     <button onclick="resetQuote()" style="width:100%;padding:14px;border-radius:14px;border:1.5px solid rgba(255,60,60,0.3);background:rgba(255,60,60,0.06);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:1px;margin-bottom:10px;">🔄 START NEW QUOTE</button>
     <button id="copy-btn" onclick="copyQuote()" style="margin-bottom:10px;">📋 COPY QUOTE TO CLIPBOARD</button>
     <button onclick="showPrintPreview()" style="width:100%;padding:16px;border-radius:14px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">🖨️ VIEW & PRINT QUOTE</button>
@@ -1773,13 +1773,43 @@ function showPrintPreview() {
   saveAsPDF();
 }
 
-function openPrintModal(content) {
-  const modal = document.getElementById('print-modal');
-  const mc = document.getElementById('print-modal-content');
-  if (!modal || !mc) { alert('Preview unavailable. Try the Copy button instead.'); return; }
-  mc.innerHTML = content;
-  modal.style.display = 'block';
-  modal.scrollTop = 0;
+function openPrintModal(printHTML) {
+  // Store current page content
+  const appDiv = document.getElementById('app');
+  const bottomBar = document.getElementById('bottom-bar');
+  const pinOverlay = document.getElementById('pin-overlay');
+  
+  // Hide app, show print content
+  if (appDiv) appDiv.style.display = 'none';
+  if (bottomBar) bottomBar.style.display = 'none';
+  if (pinOverlay) pinOverlay.style.display = 'none';
+  
+  // Create print container
+  let printDiv = document.getElementById('print-view');
+  if (!printDiv) {
+    printDiv = document.createElement('div');
+    printDiv.id = 'print-view';
+    document.body.appendChild(printDiv);
+  }
+  
+  printDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;z-index:9999;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+  printDiv.innerHTML = `
+    <div style="position:sticky;top:0;background:#000;padding:12px 16px;display:flex;gap:8px;z-index:2;print-color-adjust:exact;">
+      <button onclick="closePrintView()" style="flex:1;padding:12px;border-radius:8px;border:none;background:rgba(255,255,255,0.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">✕ CLOSE</button>
+      <button onclick="window.print()" style="flex:2;padding:12px;border-radius:8px;border:none;background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">🖨️ PRINT / SHARE PDF</button>
+    </div>
+    <div style="padding:20px;max-width:700px;margin:0 auto;">${printHTML}</div>
+    <style>@media print { #print-view > div:first-child { display:none !important; } }</style>
+  `;
+}
+
+function closePrintView() {
+  const printDiv = document.getElementById('print-view');
+  if (printDiv) printDiv.remove();
+  const appDiv = document.getElementById('app');
+  const bottomBar = document.getElementById('bottom-bar');
+  if (appDiv) appDiv.style.display = '';
+  if (bottomBar) bottomBar.style.display = '';
 }
 
 // ── Quote Numbering ────────────────────────────────────────────────────────────
