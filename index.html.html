@@ -232,7 +232,6 @@
 
   @media print {
     #quote-overlay > div:first-child { display: none !important; }
-    body > *:not(#quote-overlay) { display: none !important; }
   }
   /* Notes textarea */
   .mt14{margin-top:14px;}
@@ -542,6 +541,128 @@ function recalc() {
 }
 
 // ── Area rendering ─────────────────────────────────────────────────────────────
+
+// ── Photo Attachments ──────────────────────────────────────────────────────────
+function buildPhotoThumbs(area) {
+  if (!area.photos || area.photos.length === 0) return '';
+  return area.photos.map((src, i) => `
+    <div class="photo-thumb">
+      <img src="${src}" alt="Photo ${i+1}">
+      <button class="del-photo" onclick="deletePhoto(${area.id}, ${i})">\u00d7</button>
+    </div>
+  `).join('');
+}
+
+function handlePhotos(areaId, input) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  if (!area.photos) area.photos = [];
+  const files = Array.from(input.files);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      area.photos.push(e.target.result);
+      const thumbsEl = document.getElementById('thumbs-' + areaId);
+      if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function deletePhoto(areaId, photoIdx) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area || !area.photos) return;
+  area.photos.splice(photoIdx, 1);
+  const thumbsEl = document.getElementById('thumbs-' + areaId);
+  if (thumbsEl) thumbsEl.innerHTML = buildPhotoThumbs(area);
+}
+
+
+// ── Measurement rows ───────────────────────────────────────────────────────────
+function buildMeasRows(area) {
+  const ms = area.measurements || [];
+  return ms.map((m, i) => {
+    const rowLabel = i === 0 ? '' : `<div style="font-size:10px;color:#aaa;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;margin-top:8px;margin-bottom:2px;">AREA ${i+1}</div>`;
+    const m2val = (parseFloat(m.w)||0)*(parseFloat(m.l)||0);
+    return `${rowLabel}<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:6px;align-items:center;">
+      <input type="number" inputmode="decimal" placeholder="Width" value="${m.w}"
+        id="mw-${area.id}-${i}" style="margin-bottom:0;"
+        oninput="updateMeas(${area.id},${i},'w',this.value)"
+        onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();const el=document.getElementById('ml-${area.id}-${i}');if(el)el.focus();}">
+      <input type="number" inputmode="decimal" placeholder="Length" value="${m.l}"
+        id="ml-${area.id}-${i}" style="margin-bottom:0;"
+        oninput="updateMeas(${area.id},${i},'l',this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();const next=document.getElementById('mw-${area.id}-${i+1}');if(next){next.focus();}else{this.blur();}}">
+      <button onclick="removeMeasRow(${area.id},${i})" style="padding:10px;border-radius:8px;border:1px solid rgba(255,60,60,0.25);background:rgba(255,60,60,0.08);color:#e05555;font-size:13px;${i===0?'visibility:hidden;':''}">×</button>
+    </div>
+    <div style="font-size:11px;color:#aaa;text-align:right;margin-bottom:4px;margin-top:-2px;">${m2val>0?m2val.toFixed(1)+' m²':''}</div>`;
+  }).join('');
+}
+
+function updateMeas(areaId, idx, field, val) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  area.measurements[idx][field] = val;
+  const wrap = document.getElementById('meas-wrap-' + areaId);
+  const focused = document.activeElement?.id;
+  if (wrap) wrap.innerHTML = buildMeasRows(area);
+  if (focused) { const el = document.getElementById(focused); if(el) el.focus(); }
+  updateSubtotalDisplay(area);
+}
+
+function addMeasRow(areaId) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  area.measurements.push({w:'',l:''});
+  const wrap = document.getElementById('meas-wrap-' + areaId);
+  if (wrap) wrap.innerHTML = buildMeasRows(area);
+  const newIdx = area.measurements.length - 1;
+  setTimeout(() => {
+    const el = document.getElementById('mw-' + areaId + '-' + newIdx);
+    if (el) el.focus();
+  }, 50);
+}
+
+function removeMeasRow(areaId, idx) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area || area.measurements.length <= 1) return;
+  area.measurements.splice(idx, 1);
+  const wrap = document.getElementById('meas-wrap-' + areaId);
+  if (wrap) wrap.innerHTML = buildMeasRows(area);
+  updateSubtotalDisplay(area);
+}
+
+// ── Solar panel dropdowns ──────────────────────────────────────────────────────
+function getPanelOptions(subId, selected) {
+  const ranges = {
+    'solar15':  [1,2,3,4,5],
+    'solar610': [6,7,8,9,10],
+    'solar11':  [11,12,13,14,15,16,17,18,19,20],
+  };
+  const nums = ranges[subId] || [];
+  if (!nums.length) return '<option value="">Select range first...</option>';
+  return nums.map(n => `<option value="${n}" ${String(selected)===String(n)?'selected':''}>${n} panel${n>1?'s':''}</option>`).join('');
+}
+
+function setSolarBracket(areaId, subId) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  area.subId = subId;
+  area.panels = '';
+}
+
+function autoSetSolarSub(areaId, numPanels) {
+  const area = state.areas.find(a => a.id === areaId);
+  if (!area) return;
+  const n = parseInt(numPanels);
+  if (n <= 5) area.subId = 'solar15';
+  else if (n <= 10) area.subId = 'solar610';
+  else area.subId = 'solar11';
+  area.panels = String(numPanels);
+  updateSubtotalDisplay(area);
+}
+
 function renderAreas() {
   const container = document.getElementById('areas-container');
   container.innerHTML = '';
