@@ -586,11 +586,11 @@ function buildMeasRows(area) {
     const rowLabel = i === 0 ? '' : `<div style="font-size:10px;color:#aaa;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;margin-top:8px;margin-bottom:2px;">AREA ${i+1}</div>`;
     const m2val = (parseFloat(m.w)||0)*(parseFloat(m.l)||0);
     return `${rowLabel}<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:6px;align-items:center;">
-      <input type="number" inputmode="decimal" placeholder="Width" value="${m.w}"
+      <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="Width m" value="${m.w}"
         id="mw-${area.id}-${i}" style="margin-bottom:0;"
         oninput="updateMeas(${area.id},${i},'w',this.value)"
         onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();const el=document.getElementById('ml-${area.id}-${i}');if(el)el.focus();}">
-      <input type="number" inputmode="decimal" placeholder="Length" value="${m.l}"
+      <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="Length m" value="${m.l}"
         id="ml-${area.id}-${i}" style="margin-bottom:0;"
         oninput="updateMeas(${area.id},${i},'l',this.value)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();const next=document.getElementById('mw-${area.id}-${i+1}');if(next){next.focus();}else{this.blur();}}">
@@ -1008,13 +1008,13 @@ function renderSummary() {
 
   
     <button onclick="lockQuoteRef();saveQuoteToDashboard();alert('Saved! Ref: '+state.quoteRef);" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">💾 SAVE TO DASHBOARD</button>
-    <button onclick="showPrintPreview()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">🖨️ VIEW & SHARE QUOTE</button>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-      <button onclick="lockQuoteRef();emailQuote('self');" style="padding:13px;border-radius:12px;border:1.5px solid #000;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO ME</button>
-      <button onclick="lockQuoteRef();emailQuote('customer');" style="padding:13px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.2);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">📧 EMAIL CUSTOMER</button>
+      <button onclick="lockQuoteRef();emailQuote('self');" style="padding:13px;border-radius:12px;border:1.5px solid #000;background:#000;color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;">✉️ EMAIL TO OFFICE</button>
+
     </div>
     <button onclick="copyQuote()" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.15);background:#fff;color:#000;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;margin-bottom:10px;">📋 COPY TO CLIPBOARD</button>
-    <button onclick="resetQuote()" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid rgba(255,0,0,0.3);background:rgba(255,0,0,0.04);color:#cc0000;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;letter-spacing:1px;margin-bottom:10px;">🔄 START NEW QUOTE</button>
+
   `;
   document.getElementById('summary-content').innerHTML = html;
 }
@@ -1210,8 +1210,10 @@ function emailQuote(target) {
   const subject = 'ECC Quote '+state.quoteRef+' - '+custName;
   
   // Use location.href - most reliable on iOS
+  // Add reply-to so replies go to office email
   window.location.href = 'mailto:'+encodeURIComponent(toAddr)
     +'?subject='+encodeURIComponent(subject)
+    +'&reply-to='+encodeURIComponent('info@exteriorcleaningco.com')
     +'&body='+encodeURIComponent(lines);
 }
 
@@ -1795,7 +1797,7 @@ const _origShowTab = showTab;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 // Reset all quote counters to start from 001
-const COUNTER_VERSION = 'v6';
+const COUNTER_VERSION = 'v7';
 if (localStorage.getItem('ecc_counter_version') !== COUNTER_VERSION) {
   // Clear all counters and test quotes
   Object.keys(localStorage).filter(k => k.startsWith('ecc_quote_num_') || k === 'ecc_dashboard_quotes').forEach(k => {
